@@ -14,8 +14,9 @@ import torchmetrics.functional as MF
 from util import Dataset, Config, get_list_cores, get_num_cores
 from typing import Union
 
-drop_out_rate=0.5
-activation=F.relu
+drop_out_rate = 0.5
+activation = F.relu
+
 
 class SAGE(nn.Module):
     def __init__(self, in_feats: int, hid_feats: int, num_layers: int, out_feats: int):
@@ -24,19 +25,20 @@ class SAGE(nn.Module):
         self.dropout = nn.Dropout(drop_out_rate)
         self.hid_feats = hid_feats
         self.out_feats = out_feats
-        
+
         for layer_idx in range(num_layers):
             if layer_idx == 0:
-                self.layers.append(SAGEConv(in_feats, hid_feats, "mean", activation=activation))
+                self.layers.append(
+                    SAGEConv(in_feats, hid_feats, "mean", activation=activation)
+                )
             elif layer_idx < num_layers - 1:
-                self.layers.append(SAGEConv(hid_feats, hid_feats, "mean", activation=activation))
+                self.layers.append(
+                    SAGEConv(hid_feats, hid_feats, "mean", activation=activation)
+                )
             else:
                 self.layers.append(SAGEConv(hid_feats, out_feats, "mean"))
-            
 
-    def forward(self, 
-                blocks, 
-                feat: torch.Tensor) -> torch.Tensor:
+    def forward(self, blocks, feat: torch.Tensor) -> torch.Tensor:
         h = feat
         for l, (layer, block) in enumerate(zip(self.layers, blocks)):
             h = layer(block, h)  # len(blocks) = 1
@@ -44,7 +46,9 @@ class SAGE(nn.Module):
                 h = self.dropout(h)
         return h
 
-    def inference(self, batch_size: int, g: dgl.DGLGraph, feat: torch.Tensor) -> torch.Tensor:
+    def inference(
+        self, batch_size: int, g: dgl.DGLGraph, feat: torch.Tensor
+    ) -> torch.Tensor:
         sampler = MultiLayerFullNeighborSampler(1)
         dataloader = DataLoader(
             g,
@@ -57,47 +61,71 @@ class SAGE(nn.Module):
             num_workers=get_num_cores(),
         )
 
-        with torch.no_grad() as no_grad_ctx, \
-            dataloader.enable_cpu_affinity(compute_cores=get_list_cores(), loader_cores=get_list_cores(), verbose=False) as cpu_aff_ctx:
+        with torch.no_grad() as no_grad_ctx, dataloader.enable_cpu_affinity(
+            compute_cores=get_list_cores(), loader_cores=get_list_cores(), verbose=False
+        ) as cpu_aff_ctx:
             for l, layer in enumerate(self.layers):
-                num_col = self.hid_feats if l != len(self.layers) - 1 else self.out_feats
-                y = torch.empty(
-                    g.num_nodes(),
-                    num_col,
-                    dtype=feat.dtype
+                num_col = (
+                    self.hid_feats if l != len(self.layers) - 1 else self.out_feats
                 )
+                y = torch.empty(g.num_nodes(), num_col, dtype=feat.dtype)
 
                 for input_nodes, output_nodes, blocks in dataloader:
                     x = feat[input_nodes]
                     h = layer(blocks[0], x)  # len(blocks) = 1
                     if l != len(self.layers) - 1:
-                        h = self.dropout(h)                    
+                        h = self.dropout(h)
                     # by design, our output nodes are contiguous
                     y[output_nodes[0] : output_nodes[-1] + 1] = h
                 feat = y
             return y
-    
+
+
 class GAT(nn.Module):
-    def __init__(self, in_feats: int, hid_feats: int, num_layers: int, out_feats: int, num_heads: int=4):
+    def __init__(
+        self,
+        in_feats: int,
+        hid_feats: int,
+        num_layers: int,
+        out_feats: int,
+        num_heads: int = 4,
+    ):
         super().__init__()
         self.layers = nn.ModuleList()
         self.dropout = nn.Dropout(drop_out_rate)
-        hid_feats = int(hid_feats/num_heads)
+        hid_feats = int(hid_feats / num_heads)
         self.hid_feats = hid_feats
         self.out_feats = out_feats
         self.num_heads = num_heads
         for layer_idx in range(num_layers):
             if layer_idx == 0:
-                self.layers.append(GATConv(in_feats=in_feats, out_feats=hid_feats, num_heads=num_heads, activation=activation, allow_zero_in_degree=False))
+                self.layers.append(
+                    GATConv(
+                        in_feats=in_feats,
+                        out_feats=hid_feats,
+                        num_heads=num_heads,
+                        activation=activation,
+                        allow_zero_in_degree=False,
+                    )
+                )
             elif layer_idx < num_layers - 1:
-                self.layers.append(GATConv(in_feats=hid_feats * num_heads, out_feats=hid_feats, num_heads=num_heads, activation=activation, allow_zero_in_degree=False))            
+                self.layers.append(
+                    GATConv(
+                        in_feats=hid_feats * num_heads,
+                        out_feats=hid_feats,
+                        num_heads=num_heads,
+                        activation=activation,
+                        allow_zero_in_degree=False,
+                    )
+                )
             else:
-                self.layers.append(GATConv(in_feats=hid_feats * num_heads, out_feats=out_feats, num_heads=1))            
+                self.layers.append(
+                    GATConv(
+                        in_feats=hid_feats * num_heads, out_feats=out_feats, num_heads=1
+                    )
+                )
 
-
-    def forward(self, 
-                blocks, 
-                features: torch.Tensor) -> torch.Tensor:
+    def forward(self, blocks, features: torch.Tensor) -> torch.Tensor:
         h = features
         for l, (layer, block) in enumerate(zip(self.layers, blocks)):
             h = layer(block, h)
@@ -105,8 +133,10 @@ class GAT(nn.Module):
                 h = self.dropout(h)
             h = h.flatten(1)
         return h
-    
-    def inference(self, batch_size: int, g: dgl.DGLGraph, feat: torch.Tensor) -> torch.Tensor:
+
+    def inference(
+        self, batch_size: int, g: dgl.DGLGraph, feat: torch.Tensor
+    ) -> torch.Tensor:
         sampler = MultiLayerFullNeighborSampler(1)
         dataloader = DataLoader(
             g,
@@ -119,28 +149,30 @@ class GAT(nn.Module):
             num_workers=get_num_cores(),
         )
 
-        with torch.no_grad() as no_grad_ctx, \
-            dataloader.enable_cpu_affinity(compute_cores=get_list_cores(), loader_cores=get_list_cores(), verbose=False) as cpu_aff_ctx:
-            for l, layer in enumerate(self.layers):
-                num_col = self.hid_feats * self.num_heads if l != len(self.layers) - 1 else self.out_feats
-                y = torch.empty(
-                    g.num_nodes(),
-                    num_col,
-                    dtype=feat.dtype
+        with torch.no_grad() as no_grad_ctx, dataloader.enable_cpu_affinity(
+            compute_cores=get_list_cores(), loader_cores=get_list_cores(), verbose=False
+        ) as cpu_aff_ctx:
+            for layer_idx, layer in enumerate(self.layers):
+                num_col = (
+                    self.hid_feats * self.num_heads
+                    if layer_idx != len(self.layers) - 1
+                    else self.out_feats
                 )
+                y = torch.empty(g.num_nodes(), num_col, dtype=feat.dtype)
 
                 for input_nodes, output_nodes, blocks in dataloader:
                     x = feat[input_nodes]
                     h = layer(blocks[0], x)  # len(blocks) = 1
-                    if l != len(self.layers) - 1:
+                    if layer_idx != len(self.layers) - 1:
                         h = self.dropout(h)
-                    
+
                     h = h.flatten(1)
                     # by design, our output nodes are contiguous
                     y[output_nodes[0] : output_nodes[-1] + 1] = h
                 feat = y
             return y
-    
+
+
 def evaluate(config: Config, data: Dataset, model: SAGE | GAT):
     model.eval()
     sampler = NeighborSampler(config.fanouts)
@@ -156,13 +188,13 @@ def evaluate(config: Config, data: Dataset, model: SAGE | GAT):
     )
     ylabel = []
     ypred = []
-    for it, (input_nodes, output_nodes, blocks) in enumerate(dataloader):
+    for step, (input_nodes, output_nodes, blocks) in enumerate(dataloader):
         with torch.no_grad():
             x = data.feat[input_nodes]
             yl = data.label[output_nodes]
             ylabel.append(yl)
             ypred.append(model(blocks, x))
-            
+
     return MF.accuracy(
         torch.cat(ypred),
         torch.cat(ylabel),
@@ -170,13 +202,14 @@ def evaluate(config: Config, data: Dataset, model: SAGE | GAT):
         num_classes=data.num_classes,
     ).item()
 
+
 def test(config: Config, data: Dataset, model: Union[SAGE, GAT]):
     model.eval()
-    
+
     pred = model.inference(config.batch_size, data.graph, data.feat)
     ypred = pred[data.test_mask]
     ylabel = data.label[data.test_mask]
-            
+
     return MF.accuracy(
         ypred,
         ylabel,
