@@ -98,7 +98,7 @@ def get_args()->Config:
     parser.add_argument('--num_head', default=4, type=int, help="GAT only: number of attention head")
     parser.add_argument('--world_size', default=1, type=int, help='Number of Hosts')
     parser.add_argument('--num_partition', default=1, type=int, help='Number of partitions')
-    parser.add_argument('--graph_name', default="ogbn-arxiv", type=str, help="Input graph name", choices=["ogbn-proteins", "ogbn-products", "ogbn-arxiv", "ogbn-mag", "ogbn-papers100M"])
+    parser.add_argument('--graph_name', default="ogbn-arxiv", type=str, help="Input graph name", choices=["ogbn-proteins", "pubmed", "reddit", "ogbn-products", "ogbn-arxiv", "ogbn-mag", "ogbn-papers100M"])
     # parser.add_argument('--data_dir', required=True, type=str, help="Root data directory")
     parser.add_argument('--data_dir', default="/data/juelin/dataset/gnn", type=str, help="Root data directory")
     parser.add_argument('--model', default="gat", type=str, help="Model type", choices=["gcn", "gat", "sage"])
@@ -108,18 +108,45 @@ def get_args()->Config:
     config = Config(args)
     return config
 
-def load_dataset(config: Config):
+def load_dataset(config: Config, topo_only=False):
     if "ogbn" in config.graph_name:
         dataset = DglNodePropPredDataset(name=config.graph_name, root=config.data_dir)
         g, label = dataset[0]
         g = dgl.add_self_loop(g)
         label = torch.flatten(label).to(torch.int64)
         feat = g.ndata.pop("feat")
-        in_feats = feat.shape[1]
-        num_classes = dataset.num_classes
         idx_split = dataset.get_idx_split()
         train_mask = idx_split["train"]
         val_mask = idx_split["valid"]
         test_mask = idx_split["test"]
-        return Dataset(graph=g, feat=feat, label=label, train_mask=train_mask, val_mask=val_mask, test_mask=test_mask, num_classes=num_classes, in_feats=in_feats)
+        in_feats = feat.shape[1]
+        num_classes = dataset.num_classes
         
+        if topo_only:
+            feat = None
+            
+        return Dataset(graph=g, feat=feat, label=label, train_mask=train_mask, val_mask=val_mask, test_mask=test_mask, num_classes=num_classes, in_feats=in_feats)
+    
+    elif config.graph_name in ["pubmed", "reddit"]:
+        dataset = None
+        if config.graph_name == "pubmed":
+            dataset = dgl.data.PubmedGraphDataset(raw_dir=config.data_dir, transform=dgl.add_self_loop)
+        elif config.graph_name == "reddit":
+            dataset = dgl.data.RedditDataset(raw_dir=config.data_dir, transform=dgl.add_self_loop)
+
+        g: dgl.DGLGraph = dataset[0]
+        indices = torch.arange(g.num_nodes())
+        label = g.ndata.pop("label")
+        feat = g.ndata.pop("feat")
+        train_mask = indices[g.ndata.pop("train_mask")]
+        val_mask = indices[g.ndata.pop("val_mask")]
+        test_mask = indices[g.ndata.pop("test_mask")]
+        
+        label = torch.flatten(label).to(torch.int64)
+        in_feats = feat.shape[1]
+        num_classes = dataset.num_classes
+        
+        if topo_only:
+            feat = None
+            
+        return Dataset(graph=g, feat=feat, label=label, train_mask=train_mask, val_mask=val_mask, test_mask=test_mask, num_classes=num_classes, in_feats=in_feats)
