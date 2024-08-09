@@ -11,7 +11,7 @@ from dgl.dataloading import (
 )
 
 import torchmetrics.functional as MF
-from util import Dataset, Config, get_list_cores, get_num_cores
+from util import Dataset, Config, get_load_compute_cores
 from typing import Union
 
 drop_out_rate = 0.5
@@ -49,6 +49,9 @@ class SAGE(nn.Module):
     def inference(
         self, batch_size: int, g: dgl.DGLGraph, feat: torch.Tensor
     ) -> torch.Tensor:
+        
+        loader_cores, compute_cores = get_load_compute_cores()
+        
         sampler = MultiLayerFullNeighborSampler(1)
         dataloader = DataLoader(
             g,
@@ -58,22 +61,24 @@ class SAGE(nn.Module):
             batch_size=batch_size,
             shuffle=False,
             drop_last=False,
-            num_workers=get_num_cores(),
+            num_workers=len(loader_cores),
         )
 
-        with torch.no_grad() as no_grad_ctx, dataloader.enable_cpu_affinity(
-            compute_cores=get_list_cores(), loader_cores=get_list_cores(), verbose=False
-        ) as cpu_aff_ctx:
-            for l, layer in enumerate(self.layers):
+        with torch.no_grad() as no_grad, dataloader.enable_cpu_affinity(
+            loader_cores=loader_cores,
+            compute_cores=compute_cores,
+            verbose=False,
+        ) as cpu_affin:
+            for layer_idx, layer in enumerate(self.layers):
                 num_col = (
-                    self.hid_feats if l != len(self.layers) - 1 else self.out_feats
+                    self.hid_feats if layer_idx != len(self.layers) - 1 else self.out_feats
                 )
                 y = torch.empty(g.num_nodes(), num_col, dtype=feat.dtype)
 
                 for input_nodes, output_nodes, blocks in dataloader:
                     x = feat[input_nodes]
                     h = layer(blocks[0], x)  # len(blocks) = 1
-                    if l != len(self.layers) - 1:
+                    if layer_idx != len(self.layers) - 1:
                         h = self.dropout(h)
                     # by design, our output nodes are contiguous
                     y[output_nodes[0] : output_nodes[-1] + 1] = h
@@ -137,6 +142,9 @@ class GAT(nn.Module):
     def inference(
         self, batch_size: int, g: dgl.DGLGraph, feat: torch.Tensor
     ) -> torch.Tensor:
+        
+        loader_cores, compute_cores = get_load_compute_cores()
+
         sampler = MultiLayerFullNeighborSampler(1)
         dataloader = DataLoader(
             g,
@@ -146,12 +154,14 @@ class GAT(nn.Module):
             batch_size=batch_size,
             shuffle=False,
             drop_last=False,
-            num_workers=get_num_cores(),
+            num_workers=len(loader_cores),
         )
 
-        with torch.no_grad() as no_grad_ctx, dataloader.enable_cpu_affinity(
-            compute_cores=get_list_cores(), loader_cores=get_list_cores(), verbose=False
-        ) as cpu_aff_ctx:
+        with torch.no_grad() as no_grad, dataloader.enable_cpu_affinity(
+            compute_cores=loader_cores,
+            loader_cores=compute_cores,
+            verbose=False,
+        ) as cpu_affin:
             for layer_idx, layer in enumerate(self.layers):
                 num_col = (
                     self.hid_feats * self.num_heads

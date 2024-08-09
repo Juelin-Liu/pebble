@@ -9,9 +9,8 @@ from util import (
     Dataset,
     Timer,
     load_dataset,
-    get_num_cores,
     get_args,
-    get_list_cores,
+    get_load_compute_cores,
     get_minibatch_meta,
 )
 from typing import List
@@ -31,17 +30,18 @@ def cache_by_out_degree(data: Dataset) -> torch.Tensor:
 
 def cache_by_sampling(data: Dataset) -> torch.Tensor:
     num_epoch = 3
+    loader_cores, compute_cores = get_load_compute_cores()
     sampler = dgl.dataloading.NeighborSampler(fanouts=[10, 25])
     dataloader = dgl.dataloading.DataLoader(
         graph=data.graph,
         indices=data.train_mask,
         graph_sampler=sampler,
         batch_size=1024,
-        num_workers=get_num_cores(),
+        num_workers=len(loader_cores),
     )
 
     sampling_freq = torch.zeros(data.graph.num_nodes(), dtype=torch.int32)
-    with dataloader.enable_cpu_affinity(loader_cores=get_list_cores(0), verbose=False):
+    with dataloader.enable_cpu_affinity(loader_cores=loader_cores, compute_cores=compute_cores, verbose=False):
         for i in range(num_epoch):
             for input_nodes, _, _ in tqdm(dataloader):
                 sampling_freq[input_nodes] += 1
@@ -210,13 +210,6 @@ class CacheSimulator:
         for simu in self.cache_managers:
             simu.update(input_nodes)
 
-    # def dict(self):
-    #     ret = dict()
-    #     for simu in self.cache_managers:
-    #         ret[simu.cache_policy] = simu.dict()
-
-    #     return ret
-
     def list(self):
         ret = []
         for simu in self.cache_managers:
@@ -226,13 +219,15 @@ class CacheSimulator:
 
 
 def simulate_cache(config: Config, data: Dataset) -> CacheSimulator:
+    
+    loader_cores, compute_cores = get_load_compute_cores()
     sampler = dgl.dataloading.NeighborSampler(fanouts=config.fanouts)
     dataloader = dgl.dataloading.DataLoader(
         graph=data.graph,
         indices=data.train_mask,
         graph_sampler=sampler,
         batch_size=config.batch_size,
-        num_workers=get_num_cores(),
+        num_workers=len(loader_cores),
     )
 
     partition_mask = torch.randint(
@@ -241,7 +236,7 @@ def simulate_cache(config: Config, data: Dataset) -> CacheSimulator:
     simulator = CacheSimulator(data, partition_mask)
     timer = Timer()
 
-    with dataloader.enable_cpu_affinity(loader_cores=get_list_cores(0), verbose=False):
+    with dataloader.enable_cpu_affinity(loader_cores=loader_cores, compute_cores=compute_cores, verbose=False):
         for epoch in range(config.num_epoch):
             timer.start()
 

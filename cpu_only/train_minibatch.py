@@ -1,7 +1,7 @@
 from minibatch_model import GAT, SAGE, NeighborSampler
 from minibatch_model import evaluate, test
 from util import Config, Dataset, Timer
-from util import get_num_cores, get_list_cores, get_args, get_minibatch_meta, get_train_meta, load_dataset
+from util import get_args, get_load_compute_cores, get_minibatch_meta, get_train_meta, load_dataset
 from typing import List
 
 import torch
@@ -54,15 +54,17 @@ def train(config: Config,
           data: Dataset,
           model: GAT | SAGE) -> Logger:
     
+    loader_cores, compute_cores = get_load_compute_cores()
     loss_fcn = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
     sampler = NeighborSampler(config.fanouts)
-    model.train()
+    dataloader = dgl.dataloading.DataLoader(data.graph, data.train_mask, sampler, device="cpu", batch_size=config.batch_size, shuffle=True, use_ddp=False, num_workers=len(loader_cores))
+    
     timer = Timer()
     logger = Logger()
-    
-    train_dataloader = dgl.dataloading.DataLoader(data.graph, data.train_mask, sampler, device="cpu", batch_size=config.batch_size, shuffle=True, use_ddp=False, num_workers=get_num_cores())
-    with train_dataloader.enable_cpu_affinity(loader_cores=get_list_cores(), compute_cores=get_list_cores(), verbose=True):
+    model.train()
+
+    with dataloader.enable_cpu_affinity(loader_cores=loader_cores, compute_cores=compute_cores, verbose=True):
         eval_acc = 0
         acc_epoch_time = 0.0
 
@@ -74,7 +76,7 @@ def train(config: Config,
             forward_time = 0
             backward_time = 0
             
-            for step, (input_nodes, output_nodes, blocks) in enumerate(train_dataloader):
+            for step, (input_nodes, output_nodes, blocks) in enumerate(dataloader):
                 # done with sampling
                 sample_time += timer.record()
                 
@@ -140,7 +142,11 @@ def main():
         print("unsupported model type", config.model)
         exit(-1)
         
+    print("start training")
+
     logger = train(config, data, model)
+    
+    print("done training")
     test_acc = test(config, data, model)
     log_minibatch_train(config, data, logger, test_acc)
     print("Test Accuracy {:.4f}".format(test_acc))

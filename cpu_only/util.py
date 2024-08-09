@@ -4,22 +4,19 @@ import dgl
 import torch
 import argparse
 from ogb.nodeproppred import DglNodePropPredDataset
-import multiprocessing
 from numa import numa_info
 from typing import List
 
 
-def get_num_threads():
-    return multiprocessing.cpu_count()
+def get_num_numa():
+    return len(numa_info.keys())
 
-
-def get_num_cores():
-    return torch.get_num_threads()
-
-
-def get_list_cores(numa_id: int = 0):
-    return numa_info[numa_id]
-
+def get_load_compute_cores(numa_id: int = 0):
+    all_threads = numa_info[numa_id]
+    num_cores = len(all_threads) // 2
+    loader_cores = all_threads[:num_cores]
+    compute_cores = all_threads[num_cores:]
+    return loader_cores, compute_cores
 
 class Timer:
     def __init__(self):
