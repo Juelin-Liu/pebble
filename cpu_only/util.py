@@ -3,6 +3,7 @@ import time
 import dgl
 import torch
 import argparse
+import subprocess
 from ogb.nodeproppred import DglNodePropPredDataset
 from numa import numa_info
 from typing import List
@@ -60,6 +61,7 @@ class Config:
     num_head: int
     lr: float
     weight_decay: float
+    dropout: float
     world_size: int
     num_partition: int
     graph_name: str
@@ -78,6 +80,7 @@ class Config:
         self.lr = args.lr
         self.weight_decay = args.weight_decay
         self.world_size = args.world_size
+        self.dropout = args.dropout
         self.num_partition = args.num_partition
         self.graph_name = args.graph_name
         self.data_dir = args.data_dir
@@ -109,30 +112,41 @@ class Dataset:
         self.num_classes = num_classes
         self.in_feats = in_feats
 
-def get_minibatch_meta(config: Config, data: Dataset):
-    ret = dict()
-    ret["graph_name"] = config.graph_name
-    ret["mode"] = "minibatch"
-    ret["num_node"] = data.graph.num_nodes()
-    ret["feat_width"] = data.in_feats
-    ret["batch_size"] = config.batch_size
-    ret["fanouts"] = config.fanouts
-    ret["num_epoch"] = config.num_epoch
-    ret["num_partition"] = config.num_partition
-    return ret
+def get_cpu_model() -> str:
+    ret = subprocess.check_output("lscpu", shell=True).strip().decode()
+    idx = ret.find("Model name:")
+    cpu_model = ret[idx+11:].strip().split("\n")[0]
+    return cpu_model
 
 def get_train_meta(config: Config):
     ret = dict()
     ret["weight_decay"] = config.weight_decay
     ret["learning_rate"] = config.lr
+    ret["dropout"] = config.dropout
     return ret
 
 def get_full_meta(config: Config, data: Dataset):
     ret = dict()
     ret["graph_name"] = config.graph_name
-    ret["mode"] = "full"
+    ret["train_mode"] = "full"
+    ret["cpu_model"] = get_cpu_model()
     ret["num_node"] = data.graph.num_nodes()
+    ret["num_edge"] = data.graph.num_edges()
     ret["feat_width"] = data.in_feats
+    ret["num_epoch"] = config.num_epoch
+    ret["num_partition"] = config.num_partition
+    return ret
+
+def get_minibatch_meta(config: Config, data: Dataset):
+    ret = dict()
+    ret["graph_name"] = config.graph_name
+    ret["train_mode"] = "minibatch"
+    ret["num_node"] = data.graph.num_nodes()
+    ret["num_edge"] = data.graph.num_edges()
+    ret["cpu_model"] = get_cpu_model()
+    ret["feat_width"] = data.in_feats
+    ret["batch_size"] = config.batch_size
+    ret["fanouts"] = config.fanouts
     ret["num_epoch"] = config.num_epoch
     ret["num_partition"] = config.num_partition
     return ret
@@ -167,6 +181,10 @@ def get_args() -> Config:
     
     parser.add_argument(
         "--weight_decay", default=5e-4, type=float, help="weight decay"
+    )
+    
+    parser.add_argument(
+        "--dropout", default=0.5, type=float, help="dropout ratio"
     )
     
     parser.add_argument("--world_size", default=1, type=int, help="Number of Hosts")

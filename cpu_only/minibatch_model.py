@@ -14,15 +14,22 @@ import torchmetrics.functional as MF
 from util import Dataset, Config, get_load_compute_cores
 from typing import Union
 
-drop_out_rate = 0.5
 activation = F.relu
 
 
 class SAGE(nn.Module):
-    def __init__(self, in_feats: int, hid_feats: int, num_layers: int, out_feats: int):
+    def __init__(
+        self,
+        config: Config,
+        in_feats: int,
+        hid_feats: int,
+        num_layers: int,
+        out_feats: int,
+    ):
         super().__init__()
+        self.config = config
         self.layers = nn.ModuleList()
-        self.dropout = nn.Dropout(drop_out_rate)
+        self.dropout = nn.Dropout(config.dropout)
         self.hid_feats = hid_feats
         self.out_feats = out_feats
 
@@ -49,9 +56,8 @@ class SAGE(nn.Module):
     def inference(
         self, batch_size: int, g: dgl.DGLGraph, feat: torch.Tensor
     ) -> torch.Tensor:
-        
         loader_cores, compute_cores = get_load_compute_cores()
-        
+
         sampler = MultiLayerFullNeighborSampler(1)
         dataloader = DataLoader(
             g,
@@ -71,7 +77,9 @@ class SAGE(nn.Module):
         ) as cpu_affin:
             for layer_idx, layer in enumerate(self.layers):
                 num_col = (
-                    self.hid_feats if layer_idx != len(self.layers) - 1 else self.out_feats
+                    self.hid_feats
+                    if layer_idx != len(self.layers) - 1
+                    else self.out_feats
                 )
                 y = torch.empty(g.num_nodes(), num_col, dtype=feat.dtype)
 
@@ -89,6 +97,7 @@ class SAGE(nn.Module):
 class GAT(nn.Module):
     def __init__(
         self,
+        config: Config,
         in_feats: int,
         hid_feats: int,
         num_layers: int,
@@ -96,8 +105,9 @@ class GAT(nn.Module):
         num_heads: int = 4,
     ):
         super().__init__()
+        self.config = config
         self.layers = nn.ModuleList()
-        self.dropout = nn.Dropout(drop_out_rate)
+        self.dropout = nn.Dropout(config.dropout)
         hid_feats = int(hid_feats / num_heads)
         self.hid_feats = hid_feats
         self.out_feats = out_feats
@@ -142,7 +152,6 @@ class GAT(nn.Module):
     def inference(
         self, batch_size: int, g: dgl.DGLGraph, feat: torch.Tensor
     ) -> torch.Tensor:
-        
         loader_cores, compute_cores = get_load_compute_cores()
 
         sampler = MultiLayerFullNeighborSampler(1)
@@ -183,7 +192,8 @@ class GAT(nn.Module):
             return y
 
 
-def evaluate(config: Config, data: Dataset, model: SAGE | GAT):
+def evaluate(data: Dataset, model: SAGE | GAT):
+    config = model.config
     model.eval()
     sampler = NeighborSampler(config.fanouts)
     dataloader = DataLoader(
@@ -213,9 +223,9 @@ def evaluate(config: Config, data: Dataset, model: SAGE | GAT):
     ).item()
 
 
-def test(config: Config, data: Dataset, model: Union[SAGE, GAT]):
+def test(data: Dataset, model: Union[SAGE, GAT]):
     model.eval()
-
+    config = model.config
     pred = model.inference(config.batch_size, data.graph, data.feat)
     ypred = pred[data.test_mask]
     ylabel = data.label[data.test_mask]

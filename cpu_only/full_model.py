@@ -7,15 +7,22 @@ from dgl.nn.pytorch.conv import GraphConv
 from util import Dataset, Config
 from typing import Union
 
-drop_out_rate = 0.5
 activation = F.relu
 
 
 class GCN(nn.Module):
-    def __init__(self, in_feats: int, hid_feats: int, num_layers: int, out_feats: int):
+    def __init__(
+        self,
+        config: Config,
+        in_feats: int,
+        hid_feats: int,
+        num_layers: int,
+        out_feats: int,
+    ):
         super().__init__()
+        self.config = config
         self.layers = nn.ModuleList()
-        self.dropout = nn.Dropout(drop_out_rate)
+        self.dropout = nn.Dropout(config.dropout)
 
         for layer_idx in range(num_layers):
             if layer_idx == 0:
@@ -41,6 +48,7 @@ class GCN(nn.Module):
 class GAT(nn.Module):
     def __init__(
         self,
+        config: Config,
         in_feats: int,
         hid_feats: int,
         num_layers: int,
@@ -48,8 +56,9 @@ class GAT(nn.Module):
         num_heads: int = 4,
     ):
         super().__init__()
+        self.config = config
         self.layers = nn.ModuleList()
-        self.dropout = nn.Dropout(drop_out_rate)
+        self.dropout = nn.Dropout(config.dropout)
         hid_feats = int(hid_feats / num_heads)
 
         for layer_idx in range(num_layers):
@@ -90,7 +99,7 @@ class GAT(nn.Module):
         return h
 
 
-def evaluate(config: Config, data: Dataset, model: GCN | GAT) -> float:
+def evaluate(data: Dataset, model: GCN | GAT) -> float:
     model.eval()
     with torch.no_grad():
         logits = model(data.graph, data.feat)
@@ -101,7 +110,7 @@ def evaluate(config: Config, data: Dataset, model: GCN | GAT) -> float:
         return correct.item() * 1.0 / len(labels)
 
 
-def test(config: Config, data: Dataset, model: Union[GCN, GAT]) -> float:
+def test(data: Dataset, model: Union[GCN, GAT]) -> float:
     model.eval()
     with torch.no_grad():
         logits = model(data.graph, data.feat)

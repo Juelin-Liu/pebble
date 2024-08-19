@@ -57,7 +57,8 @@ def log_full_train(config: Config, data: Dataset, log: Logger, test_acc: float):
         ret["results"] = log.list()
         json.dump(ret, outfile)
         
-def train(config: Config, data: Dataset, model: GAT | GCN) -> Logger:
+def train(data: Dataset, model: GAT | GCN) -> Logger:
+    config = model.config
     loss_fcn = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
 
@@ -83,7 +84,7 @@ def train(config: Config, data: Dataset, model: GAT | GCN) -> Logger:
         backward_time = timer.record()
 
         # evaluation
-        eval_acc = evaluate(config, data, model) if config.eval else 0.0
+        eval_acc = evaluate(data, model) if config.eval else 0.0
         evaluate_time = timer.record()
         cur_epoch_time = timer.stop() - evaluate_time
         acc_epoch_time += cur_epoch_time
@@ -111,6 +112,7 @@ def main():
     model = None
     if config.model == "gcn":
         model = GCN(
+            config=config,
             in_feats=data.in_feats,
             hid_feats=config.hid_size,
             num_layers=config.num_layers,
@@ -118,6 +120,7 @@ def main():
         )
     elif config.model == "gat":
         model = GAT(
+            config=config,
             in_feats=data.in_feats,
             hid_feats=config.hid_size,
             num_layers=config.num_layers,
@@ -128,8 +131,8 @@ def main():
         print("unsupported model type", config.model)
         exit(-1)
 
-    logger = train(config, data, model)
-    test_acc = test(config, data, model)
+    logger = train(data, model)
+    test_acc = test(data, model)
     log_full_train(config, data, logger, test_acc)
     print("Test Accuracy {:.4f}".format(test_acc))
 
