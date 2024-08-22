@@ -8,12 +8,18 @@ def read_file(filepath):
 def parse_cpulist(line:str):
     ret = []
     cpu_id_list = line.split(",")
-    for cpu_id in cpu_id_list:
-        start, end = cpu_id.split("-")
-        start = int(start)
-        end = int(end)
-        for i in range(start, end + 1):
-            ret.append(i)
+    
+    if "-" in cpu_id_list[0]:
+        for cpu_id in cpu_id_list:
+            start, end = cpu_id.split("-")
+            start = int(start)
+            end = int(end)
+            for i in range(start, end + 1):
+                ret.append(i)
+    else:
+        for cpu_id in cpu_id_list:
+            ret.append(cpu_id)
+    
     return ret
 
 # Function to get NUMA nodes and their memory

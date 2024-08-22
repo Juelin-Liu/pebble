@@ -2,6 +2,10 @@
 
 # shellcheck disable=SC2086
 
+source ~/.bashrc
+
+mamba activate dgl
+
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --work_dir) work_dir="$2"; shift ;;
