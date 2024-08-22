@@ -15,11 +15,11 @@ You can change the number of devices used (--num_partitions) in the simulation t
 
 In this implementation, the partition ids are generated randomly which means the cached data will be uniformly (and randomly) stored on each device.
 
-The `log_path` must end with `.json`.
+The `log_file` must end with `.json`.
 
 Example, run mini batch graph training with batch size 1024 and fanouts [15,15], assuming 4 partitions (devices) are used:
 ```bash
-python3 simulate_minibatch_dataload.py --graph_name ogbn-arxiv --batch_size 1024 --fanouts 15,15 --num_partition=4 --log_path log.json --data_dir YOUR_DATASET_DIR
+python3 simulate_minibatch_dataload.py --graph_name ogbn-arxiv --batch_size 1024 --fanouts 15,15 --num_partition=4 --log_file log.json --data_dir YOUR_DATASET_DIR
 ```
 
 ### Simulation Output Format Version 1

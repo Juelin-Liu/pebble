@@ -128,7 +128,11 @@ class CacheInstance:
     def update(self, input_nodes: torch.Tensor):
         device_pid = random.randint(
             0, self.num_partition - 1
-        )  # simulate: randomly selects a device to sample the mini batch
+        )  
+        
+        # simulate: randomly selects a device to sample the mini batch
+        # TODO: shall we make this consistent for all instances that are updating?
+        
         self.update_duplicate(input_nodes)
         self.update_loc(device_pid, input_nodes)
         self.update_p2p(device_pid, input_nodes)
