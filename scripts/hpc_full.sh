@@ -8,7 +8,7 @@ project_dir="$(realpath $cur_dir/../)"
 json_dir=${project_dir}/json/train_full
 text_dir=${project_dir}/text/train_full
 data_dir=${project_dir}/dataset/gnn
-work_dir=${project_dir}/cpu_only
+work_dir=${project_dir}
 py_script=train_full.py
 bin=${project_dir}/scripts/runner.sh
 

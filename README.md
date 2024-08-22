@@ -19,13 +19,13 @@ The `log_path` must end with `.json`.
 
 Example, run mini batch graph training with batch size 1024 and fanouts [15,15], assuming 4 partitions (devices) are used:
 ```bash
-python3 simulate_minibatch_cache.py --graph_name ogbn-arxiv --batch_size 1024 --fanouts 15,15 --num_partition=4 --log_path log.json --data_dir YOUR_DATASET_DIR
+python3 simulate_minibatch_dataload.py --graph_name ogbn-arxiv --batch_size 1024 --fanouts 15,15 --num_partition=4 --log_path log.json --data_dir YOUR_DATASET_DIR
 ```
 
 ### Simulation Output Format Version 1
 The JSON output has the following schema:
 
-```json
+```yaml
 {
     "version": 1,
     "graph_name": "ogbn-arxiv",
@@ -37,35 +37,50 @@ The JSON output has the following schema:
     "results": [
         // Results for different cache policy
         {
+            // Cache policy determines the feature of which nodes have priority to be cached in GPU memory
+            // In this case, feature of nodes with higher in-degree will be cached first
+            // We can modify this in the python code to enable simulating more caching strategies
             "cache_policy": "in_degree",
             "results": [
                 // Results for different cache percentage
                 {
-                    "cache_percentage": 0, // percentage of feaure cached
+                    // main configuration (the amount of data is cached in GPU memory, the rest is on CPU memory)
+                    "cache_percentage": 0, // percentage of feature that is cached in GPU memory
                     "num_cache": 0, // number of feature cached
 
-                    // assuming all cached data is duplicated on all devices (all cached data is accessible)
+
+                    // Simulate data transfer during minibatch training
+                    // 1. Cached data is duplicated on all GPUs
                     "num_hit": 0, // total number of hits
                     "num_miss": 3151979, // total number of misses
 
-                    // assuming cached data are partitioned across devices and all cached data is accessible (nvlink)
-                    // num_p2p is a 2D array with shape (num_partition, num_partition)
-                    "num_p2p": ..., // num_p2p[x][y]: number of times y cached x's required data (dataflow: y -> x)
+                    // 2. Cached data is partitioned among all GPUs, which can fetch data from each other
+                    // num_p2p is a 2D array with shape (num_partition x num_partition)
+                    // num_p2p[a, b] means number of features that are transfered from b to a
+                    "num_p2p": [[...],
+                                [...],
+                                [...],
+                                ...] 
                     
-                    // assuming cached data are partitioned across devices and only local cached data is accessible (no-nvlink)
-                    // both are 1D arrayarray with shape (num_partition, )
-                    "num_loc_hit": ..., // num_p2p[x]: number of times x cached the required data
-                    "num_loc_miss": ..., // num_p2p[x]: number of times x does not cache the required data
+                    // 3. Cached data is partitioned among all GPUs, however they cannot fetch data from each other
+                    // This is useful if graph topology is also partitioned during minibatch training and each gpu can only access its local graph and feature data.
+                    // Results are 1D arrays of shape (num_partition)
+                    // num_p2p[a]: number of times partition a cached the required data
+                    "num_loc_hit": [...], 
 
-                }, // and other results with different cache rate ...
+                    // num_p2p[a]: number of times partition a does not cache the required data
+                    "num_loc_miss": [...] 
+
+                }, 
+                // other results with different cache rate
             ]
-        }, // and other results with different cache policy
+        }, 
+        // other results with different cache policy
     ]
 }
 ```
 
 ## Full Graph Training
-
 Example, run full graph training:
 ```bash
 python3 train_full.py --graph_name ogbn-arxiv --epoch_num 10 --log_file log.json --data_dir YOUR_DATASET_DIR
@@ -73,7 +88,7 @@ python3 train_full.py --graph_name ogbn-arxiv --epoch_num 10 --log_file log.json
 
 ### Full Graph Training Output Format Version 1
 
-```json
+```yaml
 {
     "version": 1,
     "graph_name": "ogbn-arxiv",
@@ -105,7 +120,8 @@ python3 train_full.py --graph_name ogbn-arxiv --epoch_num 10 --log_file log.json
             "acc_epoch_time": 2.831535816192627,
             "evaluate_time": 0.5136260986328125,
             "loss": 3.2898571491241455
-        }, // ... other epoch profiling results
+        },
+        // more epoch's results
     ]
 }
 ```
@@ -119,8 +135,7 @@ python3 train_minibatch.py --graph_name ogbn-arxiv --batch_size 1024 --fanouts 1
 
 ### MiniBatch Training Output Format Version 1
 
-```json
-
+```yaml
 {
     "version": 1,
     "graph_name": "ogbn-arxiv",
@@ -158,7 +173,8 @@ python3 train_minibatch.py --graph_name ogbn-arxiv --batch_size 1024 --fanouts 1
             "acc_epoch_time": 16.476157903671265,
             "evaluate_time": 4.910733461380005,
             "loss": 1.4281635284423828
-        }, // ... other epoch profiling results
+        }, 
+        // more epoch's results
     ]
 }
 ```

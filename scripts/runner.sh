@@ -4,7 +4,7 @@
 
 source ~/.bashrc
 
-mamba activate dgl
+conda activate dgl
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
