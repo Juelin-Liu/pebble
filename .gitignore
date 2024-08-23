@@ -1,8 +1,9 @@
 # IDE
 .vscode
 .idea
-*.json
 
+*.out
+text
 log
 
 # dataset

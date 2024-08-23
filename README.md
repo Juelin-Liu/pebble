@@ -63,12 +63,11 @@ The JSON output has the following schema:
                                 ...] 
                     
                     // 3. Cached data is partitioned among all GPUs, however they cannot fetch data from each other
-                    // This is useful if graph topology is also partitioned during minibatch training and each gpu can only access its local graph and feature data.
                     // Results are 1D arrays of shape (num_partition)
-                    // num_p2p[a]: number of times partition a cached the required data
+                    // num_loc_hit[a]: number of times partition a has cached the required data
                     "num_loc_hit": [...], 
 
-                    // num_p2p[a]: number of times partition a does not cache the required data
+                    // num_loc_miss[a]: number of times partition a has not cache the required data
                     "num_loc_miss": [...] 
 
                 }, 

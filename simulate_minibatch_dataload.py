@@ -59,6 +59,7 @@ class CacheInstance:
     cache_percentage: int = 0
     num_cached: int = 0
     num_partition: int = 1
+    cnt: int = 0
     cache_mask: torch.Tensor = None
     cache_priority: torch.Tensor = None
 
@@ -126,17 +127,19 @@ class CacheInstance:
         self.num_loc_miss[device_pid] += num_miss
 
     def update(self, input_nodes: torch.Tensor):
-        device_pid = random.randint(
-            0, self.num_partition - 1
-        )  
+        # device_pid = random.randint(
+        #     0, self.num_partition - 1
+        # )  
         
         # simulate: randomly selects a device to sample the mini batch
         # TODO: shall we make this consistent for all instances that are updating?
-        
+        # Change to round robin
+        device_pid = self.cnt % self.num_partition
+        self.cnt += 1
         self.update_duplicate(input_nodes)
         self.update_loc(device_pid, input_nodes)
         self.update_p2p(device_pid, input_nodes)
-
+        
     def dict(self):
         ret = dict()
         ret["cache_percentage"] = self.cache_percentage
