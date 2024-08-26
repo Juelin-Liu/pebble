@@ -2,9 +2,8 @@
 
 # shellcheck disable=SC2086
 
-source ~/.bashrc
-
-conda activate dgl
+# source ~/.bashrc
+# conda activate dgl-cpu
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in

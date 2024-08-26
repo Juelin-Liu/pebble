@@ -4,11 +4,47 @@ import torch.nn as nn
 import torch.nn.functional as F
 from dgl.nn.pytorch.conv import GATConv
 from dgl.nn.pytorch.conv import GraphConv
+from dgl.nn.pytorch.conv import SAGEConv
+
 from util import Dataset, Config
 from typing import Union
 
 activation = F.relu
 
+
+class SAGE(nn.Module):
+    def __init__(
+        self,
+        config: Config,
+        in_feats: int,
+        hid_feats: int,
+        num_layers: int,
+        out_feats: int,
+    ):
+        super().__init__()
+        self.config = config
+        self.layers = nn.ModuleList()
+        self.dropout = nn.Dropout(config.dropout)
+
+        for layer_idx in range(num_layers):
+            if layer_idx == 0:
+                self.layers.append(
+                    SAGEConv(in_feats, hid_feats, "mean", activation=activation)
+                )
+            elif layer_idx < num_layers - 1:
+                self.layers.append(
+                    SAGEConv(hid_feats, hid_feats, "mean", activation=activation)
+                )
+            else:
+                self.layers.append(SAGEConv(hid_feats, out_feats, "mean"))
+
+    def forward(self, g, features) -> torch.Tensor:
+        h = features
+        for i, layer in enumerate(self.layers):
+            if i != 0:
+                h = self.dropout(h)
+            h = layer(g, h)
+        return h
 
 class GCN(nn.Module):
     def __init__(

@@ -15,7 +15,7 @@ bin=${project_dir}/scripts/runner.sh
 # all_batch_sizes=(128 256 512 1024 2048 4096 8192 16384 32768 65536)
 # all_fanouts=("4,4,4" "15,15,15" "50,50,50")
 
-all_models=(gcn gat)
+all_models=(sage gcn gat)
 all_num_layers=(2 3)
 all_hid_size=(64 128 256)
 all_lr=("0.00001" "0.0001" "0.001" "0.01" "0.1")

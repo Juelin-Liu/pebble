@@ -1,4 +1,4 @@
-from minibatch_model import GAT, SAGE, NeighborSampler
+from minibatch_model import GAT, SAGE, GCN, NeighborSampler
 from minibatch_model import evaluate, test
 from util import Config, Dataset, Timer
 from util import (
@@ -153,6 +153,7 @@ def log_minibatch_train(config: Config, data: Dataset, log: Logger, test_acc: fl
 
 def main():
     config = get_args()
+    print(f"{config=}")
     data = load_dataset(config)
     model = None
     if config.model == "sage":
@@ -162,6 +163,15 @@ def main():
             hid_feats=config.hid_size,
             num_layers=config.num_layers,
             out_feats=data.num_classes,
+        )
+    elif config.model == "gcn":
+        model = GCN(
+            config=config,
+            in_feats=data.in_feats,
+            hid_feats=config.hid_size,
+            num_layers=config.num_layers,
+            out_feats=data.num_classes,
+            num_heads=config.num_head,
         )
     elif config.model == "gat":
         model = GAT(

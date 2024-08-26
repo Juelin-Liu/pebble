@@ -3,7 +3,7 @@ import dataclasses
 import json
 
 from typing import List
-from full_model import GAT, GCN, evaluate, test
+from full_model import GAT, SAGE, GCN, evaluate, test
 from util import Timer, Config, Dataset, get_args, load_dataset, get_full_meta, get_train_meta
 
 
@@ -110,6 +110,14 @@ def main():
     config = get_args()
     data = load_dataset(config)
     model = None
+    if config.model == "sage":
+        model = SAGE(
+            config=config,
+            in_feats=data.in_feats,
+            hid_feats=config.hid_size,
+            num_layers=config.num_layers,
+            out_feats=data.num_classes,
+        )
     if config.model == "gcn":
         model = GCN(
             config=config,
