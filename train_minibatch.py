@@ -171,7 +171,6 @@ def main():
             hid_feats=config.hid_size,
             num_layers=config.num_layers,
             out_feats=data.num_classes,
-            num_heads=config.num_head,
         )
     elif config.model == "gat":
         model = GAT(

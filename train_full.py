@@ -118,7 +118,7 @@ def main():
             num_layers=config.num_layers,
             out_feats=data.num_classes,
         )
-    if config.model == "gcn":
+    elif config.model == "gcn":
         model = GCN(
             config=config,
             in_feats=data.in_feats,
