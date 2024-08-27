@@ -41,17 +41,17 @@ for graph_name in "${all_graph_names[@]}"; do
         log_json=$json_dir/$graph_name/$exp_id.json
         log_text=$text_dir/$graph_name/$exp_id.txt
 
-        # mkdir -p $text_dir/$graph_name/
-        # mkdir -p $json_dir/$graph_name/
-        # python3 ${py_script} \
-        #     --log_file $log_json \
-        #     --fanouts $fanout \
-        #     --graph_name $graph_name \
-        #     --num_epoch ${num_epoch} \
-        #     --batch_size ${batch_size} \
-        #     --num_partition ${num_partition} \
-        #     --data_dir ${data_dir} \
-        #     --hid_size ${hid_size} 2>&1 | tee $log_text
+        mkdir -p $text_dir/$graph_name/
+        mkdir -p $json_dir/$graph_name/
+        python3 ${py_script} \
+            --log_file $log_json \
+            --fanouts $fanout \
+            --graph_name $graph_name \
+            --num_epoch ${num_epoch} \
+            --batch_size ${batch_size} \
+            --num_partition ${num_partition} \
+            --data_dir ${data_dir} \
+            --hid_size ${hid_size} 2>&1 | tee $log_text
 
         formatted_log_json=$json_dir/$graph_name/${exp_id}_format.json
         python3 -m json.tool $log_json >> $formatted_log_json

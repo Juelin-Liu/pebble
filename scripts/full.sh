@@ -21,15 +21,15 @@ dropout=0.3
 weight_decay=0
 fanouts="-1"
 all_lr_rates=(0.001 0.002 0.003)
-all_graph_names=(pubmed reddit ogbn-arxiv ogbn-products)
+all_graph_names=(pubmed reddit ogbn-arxiv ogbn-products ogbn-papers100M)
 
 function run () {
     echo "exp_id: " $exp_id
     exp_id=$((exp_id + 1))
-    log_json=$json_dir/$exp_id.json
-    log_text=$text_dir/$exp_id.txt
-    # job_name=minibatch_$exp_id
-    # sbatch --partition=defq --time=00:20:00 --mem=180G --exclusive --job-name=$job_name --output=${log_text} \
+    log_json=$json_dir/${graph_name}_${model}_${lr}.json
+    log_text=$text_dir/${graph_name}_${model}_${lr}.txt
+    job_name=full_$exp_id
+    sbatch --partition=defq --time=11:59:00 --mem=180G --exclusive --job-name=$job_name --output=${log_text} \
     $bin \
         --work_dir $work_dir \
         --py_script $py_script \
@@ -47,7 +47,8 @@ function run () {
         --graph_name $graph_name \
         --num_epoch 500 \
         --batch_size $batch_size \
-        --fanouts $fanouts 2>&1 | tee $log_text
+        --fanouts $fanouts #2>&1 | tee $log_text
+    # python3 -m json.tool $log_json > $log_json
 }
 
 # GAT
@@ -67,6 +68,10 @@ for graph_name in "${all_graph_names[@]}"; do
         num_layers=2
         num_head=2
     elif [[ "$graph_name" == "ogbn-products" ]]; then
+        hid_size=256
+        num_layers=2
+        num_head=2
+    elif [[ "$graph_name" == "ogbn-papers100M" ]]; then
         hid_size=256
         num_layers=2
         num_head=2
@@ -94,6 +99,9 @@ for graph_name in "${all_graph_names[@]}"; do
     elif [[ "$graph_name" == "ogbn-products" ]]; then
         hid_size=512
         num_layers=5
+    elif [[ "$graph_name" == "ogbn-papers100M" ]]; then
+        hid_size=256
+        num_layers=2
     fi
 
     for lr in "${all_lr_rates[@]}"; do
@@ -117,6 +125,9 @@ for graph_name in "${all_graph_names[@]}"; do
     elif [[ "$graph_name" == "ogbn-products" ]]; then
         hid_size=512
         num_layers=3
+    elif [[ "$graph_name" == "ogbn-papers100M" ]]; then
+        hid_size=256
+        num_layers=2
     fi
 
     for lr in "${all_lr_rates[@]}"; do

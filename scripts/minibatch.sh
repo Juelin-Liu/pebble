@@ -25,10 +25,12 @@ all_graph_names=(pubmed reddit ogbn-arxiv ogbn-products)
 function run () {
     echo "exp_id: " $exp_id
     exp_id=$((exp_id + 1))
-    log_json=$json_dir/$exp_id.json
-    log_text=$text_dir/$exp_id.txt
-    # job_name=minibatch_$exp_id
-    # sbatch --partition=defq --time=00:20:00 --mem=180G --exclusive --job-name=$job_name --output=${log_text} \
+    log_json=$json_dir/${graph_name}_${model}_${lr}.json
+    log_text=$text_dir/${graph_name}_${model}_${lr}.txt
+    job_name=minibatch_$exp_id
+
+    # run for 2 days
+    sbatch --partition=defq --time=11:59:00 --mem=180G --exclusive --job-name=$job_name --output=${log_text} \
     $bin \
         --work_dir $work_dir \
         --py_script $py_script \
@@ -46,7 +48,7 @@ function run () {
         --graph_name $graph_name \
         --num_epoch 100 \
         --batch_size $batch_size \
-        --fanouts $fanouts 2>&1 | tee $log_text
+        --fanouts $fanouts #2>&1 | tee $log_text
 }
 
 # GAT
@@ -72,6 +74,11 @@ for graph_name in "${all_graph_names[@]}"; do
         hid_size=128
         num_layers=2
         fanouts="4,4,4"
+        num_head=2
+    elif [[ "$graph_name" == "ogbn-papers100M" ]]; then
+        hid_size=256
+        fanouts="5,5"
+        num_layers=2
         num_head=2
     fi
 
@@ -101,6 +108,10 @@ for graph_name in "${all_graph_names[@]}"; do
         hid_size=256
         num_layers=5
         fanouts="4,4,4,4,4"
+    elif [[ "$graph_name" == "ogbn-papers100M" ]]; then
+        hid_size=256
+        num_layers=2    
+        fanouts="5,5"
     fi
 
     for lr in "${all_lr_rates[@]}"; do
@@ -128,6 +139,10 @@ for graph_name in "${all_graph_names[@]}"; do
         hid_size=512
         num_layers=2
         fanouts="4,4"
+    elif [[ "$graph_name" == "ogbn-papers100M" ]]; then
+        hid_size=256
+        num_layers=2    
+        fanouts="5,5"
     fi
 
     for lr in "${all_lr_rates[@]}"; do

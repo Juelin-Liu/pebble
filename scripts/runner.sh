@@ -2,8 +2,8 @@
 
 # shellcheck disable=SC2086
 
-# source ~/.bashrc
-# conda activate dgl-cpu
+source ~/.bashrc
+conda activate dgl
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -47,3 +47,10 @@ python3 $py_script \
     --data_dir $data_dir \
     --graph_name $graph_name \
     --model $model
+
+if [ -f $log_file ]; then
+    if [[ $log_file == *".json"]]; then
+        echo "formatting output json:" $log_file
+        python3 -m json.tool $log_file > $log_file
+    fi
+fi

@@ -224,7 +224,7 @@ def get_args() -> Config:
         choices=["gcn", "gat", "sage"],
     )
     parser.add_argument(
-        "--log_file", default="log.csv", type=str, help="output log file"
+        "--log_file", default="log.json", type=str, help="output log file"
     )
     parser.add_argument("--eval", default=True, action=argparse.BooleanOptionalAction)
     args = parser.parse_args()
