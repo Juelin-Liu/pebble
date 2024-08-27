@@ -269,38 +269,55 @@ class GAT(nn.Module):
             return y
 
 
-def evaluate(data: Dataset, model: SAGE | GAT):
-    config = model.config
+# def evaluate(data: Dataset, model: Union[SAGE, GAT, GCN]):
+#     config = model.config
+#     model.eval()
+#     sampler = NeighborSampler(config.fanouts)
+#     dataloader = DataLoader(
+#         data.graph,
+#         torch.arange(data.graph.num_nodes()),
+#         sampler,
+#         device="cpu",
+#         batch_size=config.batch_size,
+#         shuffle=False,
+#         drop_last=False,
+#         num_workers=torch.get_num_threads(),
+#     )
+#     ylabel = []
+#     ypred = []
+#     for step, (input_nodes, output_nodes, blocks) in enumerate(dataloader):
+#         with torch.no_grad():
+#             x = data.feat[input_nodes]
+#             yl = data.label[output_nodes]
+#             ylabel.append(yl)
+            
+#             yp = model(blocks, x)
+            
+#             print(f"{yp.shape=} {yl.shape=}")
+#             ypred.append(yp)
+
+#     return MF.accuracy(
+#         torch.cat(ypred),
+#         torch.cat(ylabel),
+#         task="multiclass",
+#         num_classes=data.num_classes,
+#     ).item()
+
+def evaluate(data: Dataset, model: Union[SAGE, GAT, GCN]):
     model.eval()
-    sampler = NeighborSampler(config.fanouts)
-    dataloader = DataLoader(
-        data.graph,
-        torch.arange(data.graph.num_nodes()),
-        sampler,
-        device="cpu",
-        batch_size=config.batch_size,
-        shuffle=False,
-        drop_last=False,
-        num_workers=torch.get_num_threads(),
-    )
-    ylabel = []
-    ypred = []
-    for step, (input_nodes, output_nodes, blocks) in enumerate(dataloader):
-        with torch.no_grad():
-            x = data.feat[input_nodes]
-            yl = data.label[output_nodes]
-            ylabel.append(yl)
-            ypred.append(model(blocks, x))
+    config = model.config
+    pred = model.inference(config.batch_size, data.graph, data.feat)
+    ypred = pred[data.val_mask]
+    ylabel = data.label[data.val_mask]
 
     return MF.accuracy(
-        torch.cat(ypred),
-        torch.cat(ylabel),
+        ypred,
+        ylabel,
         task="multiclass",
         num_classes=data.num_classes,
     ).item()
-
-
-def test(data: Dataset, model: Union[SAGE, GAT]):
+    
+def test(data: Dataset, model: Union[SAGE, GAT, GCN]):
     model.eval()
     config = model.config
     pred = model.inference(config.batch_size, data.graph, data.feat)
