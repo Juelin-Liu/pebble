@@ -5,8 +5,50 @@ import torch
 import argparse
 import subprocess
 from ogb.nodeproppred import DglNodePropPredDataset
+from torch.nn.parallel import DistributedDataParallel as DDP
 from numa import numa_info
 from typing import List
+
+@dataclasses.dataclass
+class LogStep:
+    epoch: int
+    eval_acc: float
+    sample_time: float
+    load_time: float
+    forward_time: float
+    backward_time: float
+    cur_epoch_time: float  # exclude evaluate time
+    acc_epoch_time: float  # accumulative epoch time excluding evaluate time
+    evaluate_time: float
+    loss: float
+
+    def print(self):
+        print(
+            "Epoch {:05d} | Loss {:.4f} | Accuracy {:.4f} | Epoch Time {:.4f}".format(
+                self.epoch, self.loss, self.eval_acc, self.cur_epoch_time
+            ),
+            flush=True,
+        )
+
+    def dict(self):
+        return self.__dict__
+
+@dataclasses.dataclass
+class Logger:
+    steps: List[LogStep] = None
+
+    def __init__(self):
+        self.steps = []
+
+    def append(self, step: LogStep):
+        self.steps.append(step)
+
+    def list(self):
+        ret = []
+        for step in self.steps:
+            ret.append(step.dict())
+
+        return ret
 
 class Timer:
     def __init__(self):
@@ -41,6 +83,8 @@ class Timer:
         return elapsed_time
 
 
+gconfig = None
+
 @dataclasses.dataclass
 class Config:
     sample_mode: str
@@ -70,7 +114,7 @@ class Config:
         self.num_head = args.num_head
         self.lr = args.lr
         self.weight_decay = args.weight_decay
-        self.world_size = args.world_size
+        # self.world_size = args.world_size
         self.dropout = args.dropout
         self.num_partition = args.num_partition
         self.graph_name = args.graph_name
@@ -79,7 +123,16 @@ class Config:
         self.log_file = args.log_file
         self.eval = args.eval
 
-
+    @staticmethod
+    def get_global_config():
+        global gconfig
+        return gconfig
+    
+    @staticmethod
+    def set_global_config(config):
+        global gconfig
+        gconfig = config
+        
 @dataclasses.dataclass
 class Dataset:
     graph: dgl.DGLGraph
@@ -103,6 +156,22 @@ class Dataset:
         self.num_classes = num_classes
         self.in_feats = in_feats
 
+    def to(self, device):
+        self.label = self.label.to(device)
+        self.train_mask = self.train_mask.to(device)
+        self.val_mask = self.val_mask.to(device)
+        self.test_mask = self.test_mask.to(device)
+
+
+def get_num_numa():
+    return len(numa_info.keys())
+
+def get_load_compute_cores(numa_id: int = 0):
+    all_threads = numa_info[numa_id]
+    num_cores = len(all_threads) // 2
+    loader_cores = all_threads[:num_cores]
+    compute_cores = all_threads[num_cores:]
+    return loader_cores, compute_cores
 
 def str_to_bytes(cache_size: str):
     if "G" in cache_size:
@@ -279,6 +348,7 @@ def get_args() -> Config:
 
     args = parser.parse_args()
     config = Config(args)
+    Config.set_global_config(config)
     return config
 
 
