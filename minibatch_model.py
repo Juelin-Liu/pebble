@@ -15,10 +15,11 @@ class SAGE(nn.Module):
         hid_feats: int,
         num_layers: int,
         out_feats: int,
+        dropout: float = 0.3
     ):
         super().__init__()
         self.layers = nn.ModuleList()
-        self.dropout = nn.Dropout(Config.get_global_config().dropout)
+        self.dropout = nn.Dropout(dropout)
         self.hid_feats = hid_feats
         self.out_feats = out_feats
 
@@ -49,10 +50,11 @@ class GCN(nn.Module):
         hid_feats: int,
         num_layers: int,
         out_feats: int,
+        dropout: float = 0.3
     ):
         super().__init__()
         self.layers = nn.ModuleList()
-        self.dropout = nn.Dropout(Config.get_global_config().dropout)
+        self.dropout = nn.Dropout(dropout)
         self.hid_feats = hid_feats
         self.out_feats = out_feats
 
@@ -84,10 +86,11 @@ class GAT(nn.Module):
         num_layers: int,
         out_feats: int,
         num_heads: int = 4,
+        dropout: float = 0.3
     ):
         super().__init__()
         self.layers = nn.ModuleList()
-        self.dropout = nn.Dropout(Config.get_global_config().dropout)
+        self.dropout = nn.Dropout(dropout)
         hid_feats = int(hid_feats / num_heads)
         self.hid_feats = hid_feats
         self.out_feats = out_feats

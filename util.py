@@ -24,8 +24,8 @@ class LogStep:
 
     def print(self):
         print(
-            "Epoch {:05d} | Loss {:.4f} | Accuracy {:.4f} | Epoch Time {:.4f}".format(
-                self.epoch, self.loss, self.eval_acc, self.cur_epoch_time
+            "Epoch {:05d} | Loss {:.4f} | Accuracy {:.4f} | Epoch Time {:.4f} | Evaluate Time {:.4f}".format(
+                self.epoch, self.loss, self.eval_acc, self.cur_epoch_time, self.evaluate_time
             ),
             flush=True,
         )
@@ -96,8 +96,8 @@ class Config:
     lr: float
     weight_decay: float
     dropout: float
-    world_size: int
-    num_partition: int
+    num_host: int
+    num_gpu_per_host: int
     graph_name: str
     data_dir: str
     model: str
@@ -114,9 +114,9 @@ class Config:
         self.num_head = args.num_head
         self.lr = args.lr
         self.weight_decay = args.weight_decay
-        # self.world_size = args.world_size
+        self.num_host = args.num_host
         self.dropout = args.dropout
-        self.num_partition = args.num_partition
+        self.num_gpu_per_host = args.num_gpu_per_host
         self.graph_name = args.graph_name
         self.data_dir = args.data_dir
         self.model = args.model
@@ -162,7 +162,14 @@ class Dataset:
         self.val_mask = self.val_mask.to(device)
         self.test_mask = self.test_mask.to(device)
 
-
+    def pack(self):
+        return (self.graph, self.feat, self.label, self.train_mask, self.val_mask, self.test_mask, self.num_classes, self.in_feats)
+    
+    @classmethod
+    def unpack(cls, packed):
+        graph, feat, label, train_mask, val_mask, test_mask, num_classes, in_feats = packed
+        return cls(graph, feat, label, train_mask, val_mask, test_mask, num_classes, in_feats)
+    
 def get_num_numa():
     return len(numa_info.keys())
 
@@ -230,7 +237,7 @@ def get_full_meta(config: Config, data: Dataset):
     ret["num_edge"] = data.graph.num_edges()
     ret["feat_width"] = data.in_feats
     ret["num_epoch"] = config.num_epoch
-    ret["num_partition"] = config.num_partition
+    ret["num_partition"] = config.num_gpu_per_host
     return ret
 
 def get_minibatch_meta(config: Config, data: Dataset):
@@ -244,7 +251,7 @@ def get_minibatch_meta(config: Config, data: Dataset):
     ret["batch_size"] = config.batch_size
     ret["fanouts"] = config.fanouts
     ret["num_epoch"] = config.num_epoch
-    ret["num_partition"] = config.num_partition
+    ret["num_partition"] = config.num_gpu_per_host
     return ret
 
 def get_quiver_meta(config: Config, data: Dataset):
@@ -261,7 +268,9 @@ def get_quiver_meta(config: Config, data: Dataset):
     ret["batch_size"] = config.batch_size
     ret["fanouts"] = config.fanouts
     ret["num_epoch"] = config.num_epoch
-    ret["num_partition"] = config.num_partition
+    ret["num_gpu_per_host"] = config.num_gpu_per_host
+    ret["num_host"] = config.num_host
+    
     return ret
 
 def get_args() -> Config:
@@ -304,9 +313,9 @@ def get_args() -> Config:
         "--dropout", default=0.5, type=float, help="dropout ratio"
     )
     
-    parser.add_argument("--world_size", default=1, type=int, help="Number of Hosts")
+    parser.add_argument("--num_host", default=1, type=int, help="Number of Hosts")
     parser.add_argument(
-        "--num_partition", default=1, type=int, help="Number of partitions"
+        "--num_gpu_per_host", default=1, type=int, help="Number of gpus on a single host"
     )
     
     parser.add_argument(

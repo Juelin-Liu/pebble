@@ -14,21 +14,17 @@ from util import Dataset, Config
 
 MODEL_TYPES = Union[SAGE, GAT, GCN]
 
-def inference_full(data: Dataset, model: DDP, mode):
+def inference_full(config: Config, data: Dataset, model: DDP, mode):
     assert(mode in ["test", "eval"])
-
-    config = Config.get_global_config()
     device = torch.cuda.current_device()
     sampler = MultiLayerFullNeighborSampler(1)
     _model: MODEL_TYPES = model.module
-    g = data.graph
-    feat = data.feat.to(device)
-    label = data.label.to(device)
-
     mask = data.test_mask if mode == "test" else data.val_mask
+    feat = data.feat
+    label = data.label
     dataloader = DataLoader(
-            g,
-            torch.arange(g.num_nodes()).to(device),
+            data.graph,
+            torch.arange(data.graph.num_nodes()).to(device),
             sampler,
             device=device,
             batch_size=config.batch_size,
@@ -47,7 +43,7 @@ def inference_full(data: Dataset, model: DDP, mode):
                 else _model.out_feats
             )
             
-            y = torch.zeros(g.num_nodes(), num_col, dtype=feat.dtype, device=device)
+            y = torch.zeros(data.graph.num_nodes(), num_col, dtype=torch.float32, device=device)
 
             for input_nodes, output_nodes, blocks in dataloader:
                 x = feat[input_nodes]
@@ -74,20 +70,17 @@ def inference_full(data: Dataset, model: DDP, mode):
         num_classes=data.num_classes,
     ).item()
 
-def inference_minibatch(data: Dataset, model: DDP, mode):
+def inference_minibatch(config: Config, data: Dataset, model: DDP, mode):
     assert(mode in ["test", "eval"])
-
-    config: Config = Config.get_global_config()
     device = torch.cuda.current_device()
     sampler = NeighborSampler(config.fanouts)
     ddp_module: MODEL_TYPES = model.module
-    g = data.graph
     feat = data.feat
     label = data.label
 
     mask = data.test_mask if mode == "test" else data.val_mask
     dataloader = DataLoader(
-            g,
+            data.graph,
             mask,
             sampler,
             device=device,
@@ -113,9 +106,8 @@ def inference_minibatch(data: Dataset, model: DDP, mode):
     dist.all_reduce(acc, op=dist.ReduceOp.AVG)
     return acc.item()
 
-def evaluate(data: Dataset, model: DDP):
-    model.eval()
-    return inference_full(data, model, "eval")
+def evaluate(config: Config, data: Dataset, model: DDP):
+    return inference_full(config, data, model, "eval")
 
-def test(data: Dataset, model: DDP):
-    return inference_full(data, model, "test")
+def test(config: Config, data: Dataset, model: DDP):
+    return inference_full(config, data, model, "test")
