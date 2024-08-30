@@ -10,7 +10,7 @@ from dgl.dataloading import (
 
 from typing import Union
 from minibatch_model import SAGE, GAT, GCN
-from util import Dataset, Config
+from util import Dataset, Config, tensor_to_bytes
 
 MODEL_TYPES = Union[SAGE, GAT, GCN]
 
@@ -77,7 +77,6 @@ def inference_minibatch(config: Config, data: Dataset, model: DDP, mode):
     ddp_module: MODEL_TYPES = model.module
     feat = data.feat
     label = data.label
-
     mask = data.test_mask if mode == "test" else data.val_mask
     dataloader = DataLoader(
             data.graph,
@@ -106,8 +105,21 @@ def inference_minibatch(config: Config, data: Dataset, model: DDP, mode):
     dist.all_reduce(acc, op=dist.ReduceOp.AVG)
     return acc.item()
 
+def can_use_full(config: Config, data: Dataset):
+    device = torch.cuda.current_device()
+    gpu_memory = torch.cuda.get_device_properties(device).total_memory - torch.cuda.memory_reserved(device)
+    feat_size = data.graph.num_nodes() * data.in_feats * 4
+    return gpu_memory > feat_size * 2
+
 def evaluate(config: Config, data: Dataset, model: DDP):
-    return inference_full(config, data, model, "eval")
+    # return inference_minibatch(config, data, model, "eval")
+    if can_use_full(config, data):
+        return inference_full(config, data, model, "eval")
+    else:
+        return inference_minibatch(config, data, model, "eval")
 
 def test(config: Config, data: Dataset, model: DDP):
-    return inference_full(config, data, model, "test")
+    if can_use_full(config, data):
+        return inference_full(config, data, model, "test")
+    else:
+        return inference_minibatch(config, data, model, "test")

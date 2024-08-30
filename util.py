@@ -4,6 +4,8 @@ import dgl
 import torch
 import argparse
 import subprocess
+import os
+
 from ogb.nodeproppred import DglNodePropPredDataset
 from torch.nn.parallel import DistributedDataParallel as DDP
 from numa import numa_info
@@ -147,12 +149,12 @@ class Dataset:
     def __init__(
         self, graph, feat, label, train_mask, val_mask, test_mask, num_classes, in_feats
     ):
-        self.graph = graph
+        self.graph = graph.int()
         self.feat = feat
-        self.label = label
-        self.train_mask = train_mask
-        self.val_mask = val_mask
-        self.test_mask = test_mask
+        self.label = label.type(torch.long)
+        self.train_mask = train_mask.type(torch.int)
+        self.val_mask = val_mask.type(torch.int)
+        self.test_mask = test_mask.type(torch.int)
         self.num_classes = num_classes
         self.in_feats = in_feats
 
@@ -191,10 +193,17 @@ def str_to_bytes(cache_size: str):
         n, _ = cache_size.split('K')
         return float(n) * 1024
 
-def tensor_to_bytes(t: torch.Tensor):
+def tensor_to_bytes(t: torch.Tensor) -> int:
     sz = t.nelement() * t.element_size()
     return sz
-    
+
+def check_has_nvlink()->bool:
+    result = subprocess.run(['nvidia-smi', 'nvlink', '-s'], 
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if (result.stdout == ""):
+        return False
+    return True
+
 def get_cuda_gpu_model():
     try:
         # Execute the nvidia-smi command
@@ -214,7 +223,7 @@ def get_cuda_gpu_model():
     except FileNotFoundError:
         print("nvidia-smi not found. Make sure NVIDIA drivers are installed and accessible.")
         return []
-        
+
 def get_cpu_model() -> str:
     ret = subprocess.check_output("lscpu", shell=True).strip().decode()
     idx = ret.find("Model name:")
@@ -327,6 +336,7 @@ def get_args() -> Config:
             "ogbn-proteins",
             "pubmed",
             "reddit",
+            "orkut",
             "ogbn-products",
             "ogbn-arxiv",
             "ogbn-mag",
@@ -418,6 +428,46 @@ def load_dataset(config: Config, topo_only=False):
         return Dataset(
             graph=g,
             feat=feat,
+            label=label,
+            train_mask=train_mask,
+            val_mask=val_mask,
+            test_mask=test_mask,
+            num_classes=num_classes,
+            in_feats=in_feats,
+        )
+    
+    elif config.graph_name == "orkut":
+        import os
+        import pandas as pd
+
+        dataset_dir = os.path.join(config.data_dir, "orkut")
+        edges_data = pd.read_csv(os.path.join(dataset_dir, "orkut_edges.csv"))
+        node_labels = pd.read_csv(os.path.join(dataset_dir, "orkut_labels.csv"))
+        node_features = torch.load(os.path.join(dataset_dir, "orkut_features.pt"), weights_only=True)
+        in_feats = node_features.shape[1]
+
+        label = torch.from_numpy(
+            node_labels.astype("category").to_numpy()
+        ).view(-1)
+
+        num_classes = (label.max() + 1).item()
+        edges_src = torch.from_numpy(edges_data["Src"].to_numpy())
+        edges_dst = torch.from_numpy(edges_data["Dst"].to_numpy())
+        graph = dgl.graph(
+            (edges_src, edges_dst), num_nodes=node_features.shape[0]
+        )
+        graph = dgl.to_bidirected(graph)
+        n_nodes = node_features.shape[0]
+        n_train = int(n_nodes * 0.6)
+        n_val = int(n_nodes * 0.2)
+
+        train_mask = torch.arange(start=0, end=n_train)
+        val_mask = torch.arange(start=n_train, end=n_train + n_val)
+        test_mask = torch.arange(start=n_train + n_val, end=n_nodes)
+        
+        return Dataset(
+            graph=graph,
+            feat=node_features,
             label=label,
             train_mask=train_mask,
             val_mask=val_mask,

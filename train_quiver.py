@@ -45,18 +45,12 @@ def ddp_setup(local_rank: int, config: Config, backend="nccl") -> DDPMeta:
     ddp_meta.rank = ddp_meta.local_rank + ddp_meta.group_rank * ddp_meta.local_world_size
     ddp_meta.world_size = ddp_meta.local_world_size * ddp_meta.world_size
     ddp_meta.update()    
-    torch.cuda.set_device(local_rank)
     dist.init_process_group(backend=backend, rank=ddp_meta.rank, world_size=ddp_meta.world_size)
+    torch.cuda.set_device(local_rank)
     return ddp_meta
 
 def ddp_exit():
     dist.destroy_process_group()
-
-def load_data_ddp(config: Config, ddp_meta: DDPMeta):
-    # TODO: load dataset only in local_rank 0 and shared it via shared memory
-    data = load_dataset(config)
-    data.to(torch.cuda.current_device())
-    return data
 
 def get_model_ddp(config: Config, ddp_meta: DDPMeta, data: Dataset):
     model = None
@@ -91,16 +85,16 @@ def get_model_ddp(config: Config, ddp_meta: DDPMeta, data: Dataset):
     
     device = torch.cuda.current_device()
     model = model.to(device)
-    ddp_model = DDP(model, device_ids=[ddp_meta.rank])
+    ddp_model = DDP(model, device_ids=[ddp_meta.local_rank])
     return ddp_model
 
 def train_quiver_ddp(rank: int, config: Config, qfeat: quiver.Feature, packed):
     ddp_meta = ddp_setup(rank, config)
     device = torch.cuda.current_device()
+    print(f"start train quiver {ddp_meta=} {device=}", flush=True)
 
     data = Dataset.unpack(packed)
     data.feat = qfeat
-    data.to(device)
 
     model = get_model_ddp(config, ddp_meta, data)
     sampler = dgl.dataloading.NeighborSampler(config.fanouts)
@@ -108,9 +102,10 @@ def train_quiver_ddp(rank: int, config: Config, qfeat: quiver.Feature, packed):
     if config.sample_mode == "uva":
         data.graph.pin_memory_()
     elif config.sample_mode == "gpu":
-        data.graph = data.graph.formats("csc").to(device)
-        # data.graph = data.graph.to(device)
-
+        data.graph = data.graph.formats("csc")
+        data.graph = data.graph.to(device)
+    
+    data.to(device)
     dataloader = dgl.dataloading.DataLoader(
         data.graph,
         data.train_mask,
@@ -141,7 +136,7 @@ def train_quiver_ddp(rank: int, config: Config, qfeat: quiver.Feature, packed):
         load_time = 0
         forward_time = 0
         backward_time = 0
-
+        epoch_loss = 0
         for step, (input_nodes, output_nodes, blocks) in enumerate(dataloader):
             # done with sampling
             sample_time += timer.record()
@@ -161,6 +156,7 @@ def train_quiver_ddp(rank: int, config: Config, qfeat: quiver.Feature, packed):
             loss.backward()
             optimizer.step()
             backward_time += timer.record()
+            epoch_loss += loss
 
         eval_acc = evaluate(config, data, model) if config.eval else 0.0
         evaluate_time = timer.record()
@@ -168,6 +164,8 @@ def train_quiver_ddp(rank: int, config: Config, qfeat: quiver.Feature, packed):
         acc_epoch_time += cur_epoch_time
 
         # logging
+        epoch_loss /= step
+        dist.all_reduce(epoch_loss, op=dist.ReduceOp.AVG)
         log_step = LogStep(
             epoch=epoch,
             eval_acc=eval_acc,
@@ -178,7 +176,7 @@ def train_quiver_ddp(rank: int, config: Config, qfeat: quiver.Feature, packed):
             cur_epoch_time=cur_epoch_time,
             acc_epoch_time=acc_epoch_time,
             evaluate_time=evaluate_time,
-            loss=loss.item(),
+            loss=epoch_loss.item(),
         )
 
         if ddp_meta.rank == 0:
@@ -187,46 +185,64 @@ def train_quiver_ddp(rank: int, config: Config, qfeat: quiver.Feature, packed):
     
     test_acc = test(config, data, model)
     if ddp_meta.rank == 0:
-        log_minibatch_train(config, data, logger, test_acc)
+        log_quiver_train(config, data, logger, test_acc)
 
 def get_quiver_feat(config: Config, data: Dataset):
+    assert(torch.cuda.is_available())
+    assert(config.num_gpu_per_host <= torch.cuda.device_count())
+    
     device_list = [i for i in range(config.num_gpu_per_host)]
     indptr, indices, _ = data.graph.adj_tensors("csc")
     csr_topo = quiver.CSRTopo(indptr=indptr, indices=indices)
     
     gpu_model = get_cuda_gpu_model()
-    has_nvlink = "A100" in gpu_model or "A40" in gpu_model
+    has_nvlink = check_has_nvlink()
     cache_policy = "p2p_clique_replicate" if has_nvlink else "device_replicate"
-    device_cache_size = str(int(tensor_to_bytes(data.feat) / (1024 * 1024))) + "MB"
+    # device_cache_size = str(int(tensor_to_bytes(data.feat) / (1024 * 1024))) + "MB"
+    device_cache_size = tensor_to_bytes(data.feat)
+
     if has_nvlink:
         quiver.init_p2p(device_list=device_list)
-        device_cache_size = str(int(tensor_to_bytes(data.feat) / (1024 * 1024 * config.num_gpu_per_host))) + "MB"
+        device_cache_size = device_cache_size // config.num_gpu_per_host
     
-    qfeat: quiver.Feature = quiver.Feature(rank=0, device_list=device_list, device_cache_size=device_cache_size, cache_policy=cache_policy, csr_topo=csr_topo)
+    # reserve 8GB for sampled subgraph etc
+    subgraph_size = 8 * 1024 * 1024 * 1024
+
+    # reserve space for caching graph topology data
+    graph_size = (data.graph.num_edges() * 2 + data.graph.num_nodes()) * 4
+    
+    max_cache_memory = torch.cuda.get_device_properties(0).total_memory - graph_size - subgraph_size
+    device_cache_size = min(device_cache_size, max_cache_memory)
+    device_cache_size = max(0, device_cache_size)
+
+    qfeat: quiver.Feature = quiver.Feature(rank=torch.cuda.current_device(), device_list=device_list, device_cache_size=device_cache_size, cache_policy=cache_policy, csr_topo=csr_topo)
     qfeat.from_cpu_tensor(data.feat)
     return qfeat
 
-def log_minibatch_train(config: Config, data: Dataset, log: Logger, test_acc: float):
+def log_quiver_train(config: Config, data: Dataset, log: Logger, test_acc: float):
     assert config.log_file.endswith(".json")
     with open(config.log_file, "w") as outfile:
         ret = dict()
         ret["version"] = 1
-        ret.update(get_minibatch_meta(config, data))
+        ret.update(get_quiver_meta(config, data))
         ret.update(get_train_meta(config))
         ret["test_acc"] = test_acc
         ret["results"] = log.list()
-        json.dump(ret, outfile, indent=2)
+        json.dump(ret, outfile, indent=4)
+        print("log saved to", config.log_file, flush=True)
 
 
 def main():
     config = get_args()
+    print(f"{config=}", flush=True)
     data = load_dataset(config)
+    data.graph = data.graph.int()
     data.graph.create_formats_()
     qfeat = get_quiver_feat(config, data)
     packed = data.pack()
     
     try:
-        spawn(train_quiver_ddp, args=(config, qfeat, packed), nprocs=config.num_gpu_per_host)
+        spawn(train_quiver_ddp, args=(config, qfeat, packed), nprocs=config.num_gpu_per_host, join=True)
     except Exception as e:
         print(f"error encountered with {config=}:", e)
         
