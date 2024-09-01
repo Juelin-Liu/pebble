@@ -56,7 +56,7 @@ def log_full_train(config: Config, data: Dataset, log: Logger, test_acc: float):
         ret.update(get_train_meta(config))
         ret["test_acc"] = test_acc
         ret["results"] = log.list()
-        json.dump(ret, outfile)
+        json.dump(ret, outfile, indent=4)
         
 def train(data: Dataset, model: GAT | GCN) -> Logger:
     config = model.config
