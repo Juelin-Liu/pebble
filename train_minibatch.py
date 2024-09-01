@@ -155,6 +155,14 @@ def main():
     config = get_args()
     print(f"{config=}")
     data = load_dataset(config)
+    gc.collect()
+    torch.cuda.empty_cache()
+    
+    print("creating graph formats")
+    data.graph.create_formats_()
+    gc.collect()
+    torch.cuda.empty_cache()
+    
     model = None
     if config.model == "sage":
         model = SAGE(

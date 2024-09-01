@@ -20,7 +20,8 @@ batch_size=1024
 dropout=0.3
 weight_decay=0
 all_lr_rates=(0.001 0.002 0.003)
-all_graph_names=(pubmed reddit ogbn-arxiv ogbn-products)
+# all_graph_names=(pubmed reddit ogbn-arxiv ogbn-products ogbn-papers100M)
+all_graph_names=(ogbn-papers100M)
 
 function run () {
     echo "exp_id: " $exp_id
@@ -48,7 +49,8 @@ function run () {
         --graph_name $graph_name \
         --num_epoch 100 \
         --batch_size $batch_size \
-        --fanouts $fanouts #2>&1 | tee $log_text
+        --fanouts $fanouts 
+        #2>&1 | tee $log_text
 }
 
 # GAT

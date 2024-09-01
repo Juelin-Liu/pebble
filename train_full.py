@@ -1,6 +1,7 @@
 import torch
 import dataclasses
 import json
+import gc
 
 from typing import List
 from full_model import GAT, SAGE, GCN, evaluate, test
@@ -109,6 +110,19 @@ def train(data: Dataset, model: GAT | GCN) -> Logger:
 def main():
     config = get_args()
     data = load_dataset(config)
+    
+    gc.collect()
+    torch.cuda.empty_cache()
+    
+    print("creating graph formats")
+    data.graph.create_formats_()
+    
+    
+    gc.collect()
+    torch.cuda.empty_cache()
+    
+    print("creating models")
+
     model = None
     if config.model == "sage":
         model = SAGE(

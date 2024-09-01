@@ -63,7 +63,7 @@ class SAGE(nn.Module):
         sampler = MultiLayerFullNeighborSampler(1)
         dataloader = DataLoader(
             g,
-            torch.arange(g.num_nodes()),
+            torch.arange(g.num_nodes()).type(torch.int),
             sampler,
             device="cpu",
             batch_size=batch_size,
@@ -139,7 +139,7 @@ class GCN(nn.Module):
         sampler = MultiLayerFullNeighborSampler(1)
         dataloader = DataLoader(
             g,
-            torch.arange(g.num_nodes()),
+            torch.arange(g.num_nodes()).type(torch.int),
             sampler,
             device="cpu",
             batch_size=batch_size,
@@ -234,7 +234,7 @@ class GAT(nn.Module):
         sampler = MultiLayerFullNeighborSampler(1)
         dataloader = DataLoader(
             g,
-            torch.arange(g.num_nodes()),
+            torch.arange(g.num_nodes()).type(torch.int),
             sampler,
             device="cpu",
             batch_size=batch_size,

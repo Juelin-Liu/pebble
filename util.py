@@ -103,12 +103,12 @@ class Dataset:
     def __init__(
         self, graph, feat, label, train_mask, val_mask, test_mask, num_classes, in_feats
     ):
-        self.graph = graph
+        self.graph = graph.int()
         self.feat = feat
-        self.label = label
-        self.train_mask = train_mask
-        self.val_mask = val_mask
-        self.test_mask = test_mask
+        self.label = label.type(torch.long)
+        self.train_mask = train_mask.type(torch.int32)
+        self.val_mask = val_mask.type(torch.int32)
+        self.test_mask = test_mask.type(torch.int32)
         self.num_classes = num_classes
         self.in_feats = in_feats
 

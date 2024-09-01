@@ -21,7 +21,8 @@ dropout=0.3
 weight_decay=0
 fanouts="-1"
 all_lr_rates=(0.001 0.002 0.003)
-all_graph_names=(pubmed reddit ogbn-arxiv ogbn-products ogbn-papers100M)
+# all_graph_names=(pubmed reddit ogbn-arxiv ogbn-products ogbn-papers100M)
+all_graph_names=(ogbn-papers100M)
 
 function run () {
     echo "exp_id: " $exp_id
