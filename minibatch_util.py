@@ -22,9 +22,10 @@ def inference_full(config: Config, data: Dataset, model: DDP, mode):
     mask = data.test_mask if mode == "test" else data.val_mask
     feat = data.feat
     label = data.label
+    idx = torch.arange(data.graph.num_nodes()).type(torch.int).to(device)
     dataloader = DataLoader(
             data.graph,
-            torch.arange(data.graph.num_nodes()).to(device),
+            idx,
             sampler,
             device=device,
             batch_size=config.batch_size,
