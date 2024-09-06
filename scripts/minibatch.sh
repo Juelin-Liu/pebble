@@ -18,18 +18,18 @@ mkdir -p $text_dir
 exp_id=0
 batch_size=1024
 dropout=0.3
-weight_decay=0
+weight_decay=0.0005
 all_lr_rates=(0.001 0.002 0.003)
-# all_graph_names=(pubmed reddit ogbn-arxiv ogbn-products ogbn-papers100M)
+all_graph_names=(pubmed reddit ogbn-arxiv ogbn-products)
 all_graph_names=(ogbn-papers100M)
+all_graph_names=(ogbn-products)
 
 function run () {
     echo "exp_id: " $exp_id
     exp_id=$((exp_id + 1))
     log_json=$json_dir/${graph_name}_${model}_${lr}.json
     log_text=$text_dir/${graph_name}_${model}_${lr}.txt
-    job_name=minibatch_$exp_id
-
+    job_name=minibatch_${graph_name}_${model}_${lr}
     # run for 2 days
     sbatch --partition=defq --time=11:59:00 --mem=180G --exclusive --job-name=$job_name --output=${log_text} \
     $bin \
@@ -47,10 +47,10 @@ function run () {
         --num_partition 1 \
         --data_dir $data_dir \
         --graph_name $graph_name \
-        --num_epoch 100 \
+        --num_epoch 30 \
         --batch_size $batch_size \
         --fanouts $fanouts 
-        #2>&1 | tee $log_text
+        # 2>&1 | tee $log_text
 }
 
 # GAT
@@ -74,7 +74,7 @@ for graph_name in "${all_graph_names[@]}"; do
         num_head=2
     elif [[ "$graph_name" == "ogbn-products" ]]; then
         hid_size=128
-        num_layers=2
+        num_layers=3
         fanouts="4,4,4"
         num_head=2
     elif [[ "$graph_name" == "ogbn-papers100M" ]]; then
@@ -89,65 +89,65 @@ for graph_name in "${all_graph_names[@]}"; do
     done
 done
 
-# GraphSage
-num_head=0
-model=sage
-for graph_name in "${all_graph_names[@]}"; do
-    hid_size=128
-    if [[ "$graph_name" == "pubmed" ]]; then
-        hid_size=256
-        fanouts="10,10"
-        num_layers=2
-    elif [[ "$graph_name" == "ogbn-arxiv" ]]; then
-        hid_size=128
-        fanouts="15,15,15,15,15"
-        num_layers=5
-    elif [[ "$graph_name" == "reddit" ]]; then
-        hid_size=128
-        fanouts="4,4,4,4"
-        num_layers=4
-    elif [[ "$graph_name" == "ogbn-products" ]]; then
-        hid_size=256
-        num_layers=5
-        fanouts="4,4,4,4,4"
-    elif [[ "$graph_name" == "ogbn-papers100M" ]]; then
-        hid_size=256
-        num_layers=2    
-        fanouts="5,5"
-    fi
+# # GraphSage
+# num_head=0
+# model=sage
+# for graph_name in "${all_graph_names[@]}"; do
+#     hid_size=128
+#     if [[ "$graph_name" == "pubmed" ]]; then
+#         hid_size=256
+#         fanouts="10,10"
+#         num_layers=2
+#     elif [[ "$graph_name" == "ogbn-arxiv" ]]; then
+#         hid_size=128
+#         fanouts="15,15,15,15,15"
+#         num_layers=5
+#     elif [[ "$graph_name" == "reddit" ]]; then
+#         hid_size=128
+#         fanouts="4,4,4,4"
+#         num_layers=4
+#     elif [[ "$graph_name" == "ogbn-products" ]]; then
+#         hid_size=256
+#         num_layers=5
+#         fanouts="4,4,4,4,4"
+#     elif [[ "$graph_name" == "ogbn-papers100M" ]]; then
+#         hid_size=256
+#         num_layers=2    
+#         fanouts="5,5"
+#     fi
 
-    for lr in "${all_lr_rates[@]}"; do
-        run
-    done
-done
+#     for lr in "${all_lr_rates[@]}"; do
+#         run
+#     done
+# done
 
-# GCN
-model=gcn
-for graph_name in "${all_graph_names[@]}"; do
-    hid_size=128
-    if [[ "$graph_name" == "pubmed" ]]; then
-        hid_size=64
-        fanouts="10,10,10,10,10,10"
-        num_layers=6
-    elif [[ "$graph_name" == "ogbn-arxiv" ]]; then
-        hid_size=1024
-        fanouts="15,15"
-        num_layers=2
-    elif [[ "$graph_name" == "reddit" ]]; then
-        hid_size=512
-        fanouts="4,4"
-        num_layers=4
-    elif [[ "$graph_name" == "ogbn-products" ]]; then
-        hid_size=512
-        num_layers=2
-        fanouts="4,4"
-    elif [[ "$graph_name" == "ogbn-papers100M" ]]; then
-        hid_size=256
-        num_layers=2    
-        fanouts="5,5"
-    fi
+# # GCN
+# model=gcn
+# for graph_name in "${all_graph_names[@]}"; do
+#     hid_size=128
+#     if [[ "$graph_name" == "pubmed" ]]; then
+#         hid_size=64
+#         fanouts="10,10,10,10,10,10"
+#         num_layers=6
+#     elif [[ "$graph_name" == "ogbn-arxiv" ]]; then
+#         hid_size=1024
+#         fanouts="15,15"
+#         num_layers=2
+#     elif [[ "$graph_name" == "reddit" ]]; then
+#         hid_size=512
+#         fanouts="4,4"
+#         num_layers=4
+#     elif [[ "$graph_name" == "ogbn-products" ]]; then
+#         hid_size=512
+#         num_layers=2
+#         fanouts="4,4"
+#     elif [[ "$graph_name" == "ogbn-papers100M" ]]; then
+#         hid_size=256
+#         num_layers=2    
+#         fanouts="5,5"
+#     fi
 
-    for lr in "${all_lr_rates[@]}"; do
-        run
-    done
-done
+#     for lr in "${all_lr_rates[@]}"; do
+#         run
+#     done
+# done
