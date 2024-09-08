@@ -2,59 +2,19 @@ import torch
 import dataclasses
 import json
 import gc
-
 from typing import List
-from full_model import GAT, SAGE, GCN, evaluate, test
-from util import Timer, Config, Dataset, get_args, load_dataset, get_full_meta, get_train_meta
+from full_model import GAT, SAGE, GCN, eval_test
+from util import *
 
 
-@dataclasses.dataclass
-class LogEpoch:
-    epoch: int
-    eval_acc: float
-    forward_time: float
-    backward_time: float
-    cur_epoch_time: float  # exclude evaluate time
-    acc_epoch_time: float  # accumulative epoch time excluding evaluate time
-    evaluate_time: float
-    loss: float
-
-    def print(self):
-        print(
-            "Epoch {:05d} | Loss {:.4f} | Accuracy {:.4f} | Epoch Time {:.4f}".format(
-                self.epoch, self.loss, self.eval_acc, self.cur_epoch_time
-            ),
-            flush=True,
-        )
-    
-    def dict(self):
-        return self.__dict__
-    
-@dataclasses.dataclass
-class Logger:
-    steps: List[LogEpoch] = None
-
-    def __init__(self):
-        self.steps = []
-        
-    def append(self, step: LogEpoch):
-        self.steps.append(step)
-
-    def list(self):
-        ret = []
-        for step in self.steps:
-            ret.append(step.dict())
-            
-        return ret
-    
-def log_full_train(config: Config, data: Dataset, log: Logger, test_acc: float):
+def log_full_train(config: Config, data: Dataset, log: Logger):
     assert(config.log_file.endswith(".json"))
     with open(config.log_file, "w") as outfile:
         ret = dict()
         ret["version"] = 1
         ret.update(get_full_meta(config, data))
         ret.update(get_train_meta(config))
-        ret["test_acc"] = test_acc
+        ret.update(log.get_summary())
         ret["results"] = log.list()
         json.dump(ret, outfile, indent=4)
         
@@ -85,7 +45,7 @@ def train(data: Dataset, model: GAT | GCN) -> Logger:
         backward_time = timer.record()
 
         # evaluation
-        eval_acc = evaluate(data, model) if config.eval else 0.0
+        eval_acc, test_acc = eval_test(data, model) if config.eval else 0.0
         evaluate_time = timer.record()
         cur_epoch_time = timer.stop() - evaluate_time
         acc_epoch_time += cur_epoch_time
@@ -94,6 +54,9 @@ def train(data: Dataset, model: GAT | GCN) -> Logger:
         log_epoch = LogEpoch(
             epoch=epoch,
             eval_acc=eval_acc,
+            test_acc=test_acc,
+            sample_time=0,
+            load_time=0,
             forward_time=forward_time,
             backward_time=backward_time,
             cur_epoch_time=cur_epoch_time,
@@ -154,10 +117,7 @@ def main():
         exit(-1)
 
     logger = train(data, model)
-    test_acc = test(data, model)
-    log_full_train(config, data, logger, test_acc)
-    print("Test Accuracy {:.4f}".format(test_acc))
-
+    log_full_train(config, data, logger)
 
 if __name__ == "__main__":
     main()

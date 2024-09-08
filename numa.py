@@ -40,6 +40,19 @@ def get_numa_nodes_info():
     return numa_nodes
 
 numa_info = get_numa_nodes_info()
+    
+def get_num_numa():
+    return len(numa_info.keys())
+
+def get_load_compute_cores(numa_id: int = 0):
+    all_threads = numa_info[numa_id]
+    num_cores = len(all_threads) // 2
+    loader_cores = all_threads[:num_cores]
+    compute_cores = all_threads[num_cores:]
+    
+    loader_cores = [int(i) for i in loader_cores]
+    compute_cores = [int(i) for i in compute_cores]
+    return loader_cores, compute_cores
 
 # Get NUMA nodes information
 if __name__ == "__main__":

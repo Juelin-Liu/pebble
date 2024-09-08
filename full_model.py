@@ -135,6 +135,24 @@ class GAT(nn.Module):
         return h
 
 
+def eval_test(data: Dataset, model: Union[SAGE, GAT, GCN]):
+    model.eval()
+    with torch.no_grad():
+        logits = model(data.graph, data.feat)
+        
+        val_logits = logits[data.val_mask]
+        val_labels = data.label[data.val_mask]
+        _, val_indices = torch.max(val_logits, dim=1)
+        val_correct = torch.sum(val_indices == val_labels)
+        val_acc = val_correct.item() * 1.0 / len(val_labels)
+        
+        test_logits = logits[data.test_mask]
+        test_labels = data.label[data.test_mask]
+        _, test_indices = torch.max(test_logits, dim=1)
+        test_correct = torch.sum(test_indices == test_labels)
+        test_acc = test_correct.item() * 1.0 / len(test_labels)    
+        return val_acc, test_acc
+    
 def evaluate(data: Dataset, model: GCN | GAT) -> float:
     model.eval()
     with torch.no_grad():

@@ -5,20 +5,83 @@ import torch
 import argparse
 import subprocess
 from ogb.nodeproppred import DglNodePropPredDataset
-from numa import numa_info
+from numa import numa_info, get_num_numa, get_load_compute_cores
 from typing import List
 
 
-def get_num_numa():
-    return len(numa_info.keys())
+@dataclasses.dataclass
+class LogEpoch:
+    epoch: int
+    eval_acc: float
+    test_acc: float
+    sample_time: float
+    load_time: float
+    forward_time: float
+    backward_time: float
+    cur_epoch_time: float  # exclude evaluate time
+    acc_epoch_time: float  # accumulative epoch time excluding evaluate time
+    evaluate_time: float
+    loss: float
 
-def get_load_compute_cores(numa_id: int = 0):
-    all_threads = numa_info[numa_id]
-    num_cores = len(all_threads) // 2
-    loader_cores = all_threads[:num_cores]
-    compute_cores = all_threads[num_cores:]
-    return loader_cores, compute_cores
+    def print(self):
+        print(
+            "Epoch {:05d} | Loss {:.4f} | Evaluation Accuracy {:.4f} | Test Accuracy {:.4f} | Epoch Time {:.4f}".format(
+                self.epoch, self.loss, self.eval_acc, self.test_acc, self.cur_epoch_time
+            ),
+            flush=True,
+        )
 
+    def dict(self):
+        return self.__dict__
+
+
+@dataclasses.dataclass
+class Logger:
+    steps: List[LogEpoch] = None
+
+    def __init__(self):
+        self.steps = []
+
+    def append(self, step: LogEpoch):
+        self.steps.append(step)
+
+    def list(self):
+        ret = []
+        for step in self.steps:
+            ret.append(step.dict())
+
+        return ret
+
+    def get_summary(self):
+        best_eval_acc = 0.0
+        best_eval_idx = 0
+        time_to_best_eval = 0
+        
+        best_test_acc = 0.0
+        best_test_idx = 0
+        time_to_best_test = 0
+        
+        for idx, step in enumerate(self.steps):
+            if step.eval_acc > best_eval_acc:
+                best_eval_acc = step.eval_acc
+                best_eval_idx = idx
+                time_to_best_eval = step.acc_epoch_time
+                
+            if step.test_acc > best_test_acc:
+                best_test_acc = step.test_acc
+                best_test_idx = idx
+                time_to_best_test = step.acc_epoch_time
+                
+        meta = {}
+        meta["best_eval_acc"] = best_eval_acc
+        meta["best_eval_epoch"] = best_eval_idx + 1
+        meta["time_to_best_eval"] = time_to_best_eval
+        
+        meta["best_test_acc"] = best_test_acc
+        meta["best_test_epoch"] = best_test_idx + 1
+        meta["time_to_best_test"] = time_to_best_test
+        return meta
+    
 class Timer:
     def __init__(self):
         self.start_time = None

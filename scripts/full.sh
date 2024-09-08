@@ -21,15 +21,15 @@ dropout=0.3
 weight_decay=0
 fanouts="-1"
 all_lr_rates=(0.001 0.002 0.003)
-# all_graph_names=(pubmed reddit ogbn-arxiv ogbn-products ogbn-papers100M)
-all_graph_names=(ogbn-papers100M)
+all_graph_names=(pubmed reddit ogbn-arxiv ogbn-products)
+# all_graph_names=(ogbn-papers100M)
 
 function run () {
     echo "exp_id: " $exp_id
     exp_id=$((exp_id + 1))
     log_json=$json_dir/${graph_name}_${model}_${lr}.json
     log_text=$text_dir/${graph_name}_${model}_${lr}.txt
-    job_name=full_$exp_id
+    job_name=full_${graph_name}_${model}_${lr}
     sbatch --partition=defq --time=11:59:00 --mem=180G --exclusive --job-name=$job_name --output=${log_text} \
     $bin \
         --work_dir $work_dir \
@@ -48,8 +48,8 @@ function run () {
         --graph_name $graph_name \
         --num_epoch 500 \
         --batch_size $batch_size \
-        --fanouts $fanouts #2>&1 | tee $log_text
-    # python3 -m json.tool $log_json > $log_json
+        --fanouts $fanouts 
+    #2>&1 | tee $log_text
 }
 
 # GAT

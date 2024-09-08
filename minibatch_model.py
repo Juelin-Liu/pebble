@@ -15,6 +15,7 @@ from dgl.dataloading import (
 import torchmetrics.functional as MF
 from util import Dataset, Config, get_load_compute_cores
 from typing import Union
+from tqdm import tqdm
 
 activation = F.relu
 
@@ -85,7 +86,7 @@ class SAGE(nn.Module):
                 )
                 y = torch.empty(g.num_nodes(), num_col, dtype=feat.dtype)
 
-                for input_nodes, output_nodes, blocks in dataloader:
+                for input_nodes, output_nodes, blocks in tqdm(dataloader):
                     x = feat[input_nodes]
                     h = layer(blocks[0], x)  # len(blocks) = 1
                     if layer_idx != len(self.layers) - 1:
@@ -114,14 +115,14 @@ class GCN(nn.Module):
         for layer_idx in range(num_layers):
             if layer_idx == 0:
                 self.layers.append(
-                    GraphConv(in_feats, hid_feats, "mean", activation=activation)
+                    GraphConv(in_feats, hid_feats, activation=activation)
                 )
             elif layer_idx < num_layers - 1:
                 self.layers.append(
-                    GraphConv(hid_feats, hid_feats, "mean", activation=activation)
+                    GraphConv(hid_feats, hid_feats, activation=activation)
                 )
             else:
-                self.layers.append(GraphConv(hid_feats, out_feats, "mean"))
+                self.layers.append(GraphConv(hid_feats, out_feats))
 
     def forward(self, blocks, feat: torch.Tensor) -> torch.Tensor:
         h = feat
@@ -161,7 +162,7 @@ class GCN(nn.Module):
                 )
                 y = torch.empty(g.num_nodes(), num_col, dtype=feat.dtype)
 
-                for input_nodes, output_nodes, blocks in dataloader:
+                for input_nodes, output_nodes, blocks in tqdm(dataloader):
                     x = feat[input_nodes]
                     h = layer(blocks[0], x)  # len(blocks) = 1
                     if layer_idx != len(self.layers) - 1:
@@ -256,7 +257,7 @@ class GAT(nn.Module):
                 )
                 y = torch.empty(g.num_nodes(), num_col, dtype=feat.dtype)
 
-                for input_nodes, output_nodes, blocks in dataloader:
+                for input_nodes, output_nodes, blocks in tqdm(dataloader):
                     x = feat[input_nodes]
                     h = layer(blocks[0], x)  # len(blocks) = 1
                     if layer_idx != len(self.layers) - 1:
@@ -268,40 +269,31 @@ class GAT(nn.Module):
                 feat = y
             return y
 
+def eval_test(data: Dataset, model: Union[SAGE, GAT, GCN]):
+    model.eval()
+    config = model.config
+    pred = model.inference(config.batch_size, data.graph, data.feat)
+    
+    ypred = pred[data.val_mask]
+    ylabel = data.label[data.val_mask]
 
-# def evaluate(data: Dataset, model: Union[SAGE, GAT, GCN]):
-#     config = model.config
-#     model.eval()
-#     sampler = NeighborSampler(config.fanouts)
-#     dataloader = DataLoader(
-#         data.graph,
-#         torch.arange(data.graph.num_nodes()),
-#         sampler,
-#         device="cpu",
-#         batch_size=config.batch_size,
-#         shuffle=False,
-#         drop_last=False,
-#         num_workers=torch.get_num_threads(),
-#     )
-#     ylabel = []
-#     ypred = []
-#     for step, (input_nodes, output_nodes, blocks) in enumerate(dataloader):
-#         with torch.no_grad():
-#             x = data.feat[input_nodes]
-#             yl = data.label[output_nodes]
-#             ylabel.append(yl)
-            
-#             yp = model(blocks, x)
-            
-#             print(f"{yp.shape=} {yl.shape=}")
-#             ypred.append(yp)
+    eval_acc = MF.accuracy(
+        ypred,
+        ylabel,
+        task="multiclass",
+        num_classes=data.num_classes,
+    ).item()
+    
+    ypred = pred[data.test_mask]
+    ylabel = data.label[data.test_mask]
 
-#     return MF.accuracy(
-#         torch.cat(ypred),
-#         torch.cat(ylabel),
-#         task="multiclass",
-#         num_classes=data.num_classes,
-#     ).item()
+    test_acc = MF.accuracy(
+        ypred,
+        ylabel,
+        task="multiclass",
+        num_classes=data.num_classes,
+    ).item()
+    return eval_acc, test_acc
 
 def evaluate(data: Dataset, model: Union[SAGE, GAT, GCN]):
     model.eval()

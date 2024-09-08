@@ -228,6 +228,8 @@ class CacheSimulator:
 def simulate_cache(config: Config, data: Dataset) -> CacheSimulator:
     
     loader_cores, compute_cores = get_load_compute_cores()
+    
+    print(f"{loader_cores=} {compute_cores=}")
     sampler = dgl.dataloading.NeighborSampler(fanouts=config.fanouts)
     dataloader = dgl.dataloading.DataLoader(
         graph=data.graph,
@@ -264,7 +266,7 @@ def log_simulation(config: Config, data: Dataset, simu: CacheSimulator):
         ret["version"] = 1
         ret.update(get_minibatch_meta(config, data))
         ret["results"] = simu.list()
-        json.dump(ret, outfile)
+        json.dump(ret, outfile, indent=4)
 
 
 def main():

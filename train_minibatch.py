@@ -1,62 +1,14 @@
 from minibatch_model import GAT, SAGE, GCN, NeighborSampler
-from minibatch_model import evaluate, test
-from util import Config, Dataset, Timer
-from util import (
-    get_args,
-    get_load_compute_cores,
-    get_minibatch_meta,
-    get_train_meta,
-    load_dataset,
-)
+from minibatch_model import eval_test
+from util import *
 from typing import List
 
 import torch
 import dgl
 import dataclasses
 import json
-
-
-@dataclasses.dataclass
-class LogEpoch:
-    epoch: int
-    eval_acc: float
-    sample_time: float
-    load_time: float
-    forward_time: float
-    backward_time: float
-    cur_epoch_time: float  # exclude evaluate time
-    acc_epoch_time: float  # accumulative epoch time excluding evaluate time
-    evaluate_time: float
-    loss: float
-
-    def print(self):
-        print(
-            "Epoch {:05d} | Loss {:.4f} | Accuracy {:.4f} | Epoch Time {:.4f}".format(
-                self.epoch, self.loss, self.eval_acc, self.cur_epoch_time
-            ),
-            flush=True,
-        )
-
-    def dict(self):
-        return self.__dict__
-
-
-@dataclasses.dataclass
-class Logger:
-    steps: List[LogEpoch] = None
-
-    def __init__(self):
-        self.steps = []
-
-    def append(self, step: LogEpoch):
-        self.steps.append(step)
-
-    def list(self):
-        ret = []
-        for step in self.steps:
-            ret.append(step.dict())
-
-        return ret
+import gc
+from tqdm import tqdm
 
 
 def train(data: Dataset, model: GAT | SAGE) -> Logger:
@@ -88,6 +40,7 @@ def train(data: Dataset, model: GAT | SAGE) -> Logger:
         eval_acc = 0
         acc_epoch_time = 0.0
 
+        # for epoch in tqdm(range(config.num_epoch)):
         for epoch in range(config.num_epoch):
             timer.start()
             sample_time = 0
@@ -95,6 +48,7 @@ def train(data: Dataset, model: GAT | SAGE) -> Logger:
             forward_time = 0
             backward_time = 0
 
+            # for step, (input_nodes, output_nodes, blocks) in enumerate(tqdm(dataloader, leave=False)):
             for step, (input_nodes, output_nodes, blocks) in enumerate(dataloader):
                 # done with sampling
                 sample_time += timer.record()
@@ -106,6 +60,7 @@ def train(data: Dataset, model: GAT | SAGE) -> Logger:
 
                 # forward
                 pred = model(blocks, x)
+                
                 loss = loss_fcn(pred, tlabel)
                 forward_time += timer.record()
 
@@ -115,7 +70,7 @@ def train(data: Dataset, model: GAT | SAGE) -> Logger:
                 optimizer.step()
                 backward_time += timer.record()
 
-            eval_acc = evaluate(data, model) if config.eval else 0.0
+            eval_acc, test_acc = eval_test(data, model) if config.eval else 0.0
             evaluate_time = timer.record()
             cur_epoch_time = timer.stop() - evaluate_time
             acc_epoch_time += cur_epoch_time
@@ -124,6 +79,7 @@ def train(data: Dataset, model: GAT | SAGE) -> Logger:
             log_epoch = LogEpoch(
                 epoch=epoch,
                 eval_acc=eval_acc,
+                test_acc=test_acc,
                 sample_time=sample_time,
                 load_time=load_time,
                 forward_time=forward_time,
@@ -139,14 +95,14 @@ def train(data: Dataset, model: GAT | SAGE) -> Logger:
     return logger
 
 
-def log_minibatch_train(config: Config, data: Dataset, log: Logger, test_acc: float):
+def log_minibatch_train(config: Config, data: Dataset, log: Logger):
     assert config.log_file.endswith(".json")
     with open(config.log_file, "w") as outfile:
         ret = dict()
         ret["version"] = 1
         ret.update(get_minibatch_meta(config, data))
         ret.update(get_train_meta(config))
-        ret["test_acc"] = test_acc
+        ret.update(log.get_summary())
         ret["results"] = log.list()
         json.dump(ret, outfile, indent=4)
 
@@ -194,10 +150,7 @@ def main():
         exit(-1)
 
     logger = train(data, model)    
-    test_acc = test(data, model)
-    log_minibatch_train(config, data, logger, test_acc)
-    print("Test Accuracy {:.4f}".format(test_acc))
-
+    log_minibatch_train(config, data, logger)
 
 if __name__ == "__main__":
     main()
