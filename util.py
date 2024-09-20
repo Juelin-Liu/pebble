@@ -160,9 +160,9 @@ class Dataset:
 
     def to(self, device):
         self.label = self.label.to(device)
-        self.train_mask = self.train_mask.to(device)
-        self.val_mask = self.val_mask.to(device)
-        self.test_mask = self.test_mask.to(device)
+        self.train_mask = self.train_mask.type(torch.int).to(device)
+        self.val_mask = self.val_mask.type(torch.int).to(device)
+        self.test_mask = self.test_mask.type(torch.int).to(device)
 
     def pack(self):
         return (self.graph, self.feat, self.label, self.train_mask, self.val_mask, self.test_mask, self.num_classes, self.in_feats)
@@ -194,7 +194,7 @@ def str_to_bytes(cache_size: str):
         return float(n) * 1024
 
 def tensor_to_bytes(t: torch.Tensor) -> int:
-    sz = t.nelement() * t.element_size()
+    sz = t.shape[0] * t.shape[1] * 4
     return sz
 
 def check_has_nvlink()->bool:
@@ -370,9 +370,40 @@ def get_args() -> Config:
     Config.set_global_config(config)
     return config
 
-
-def load_dataset(config: Config, topo_only=False):
-    if "ogbn" in config.graph_name:
+def load_dataset(config: Config, device="cpu", topo_only=False):
+    if config.graph_name == "ogbn-papers100M" or config.graph_name == "orkut":
+        import numpy as np
+        in_dir = os.path.join(config.data_dir, config.graph_name)
+        indptr = np.load(f"{in_dir}/indptr.npy", mmap_mode='r')
+        indices = np.load(f"{in_dir}/indices.npy", mmap_mode='r')
+        weights = np.empty([])
+        g = dgl.graph(data=("csc", (indptr, indices, weights)), device=device)
+        feat = np.load(f"{in_dir}/feat.npy", mmap_mode='r')
+        feat = torch.from_numpy(feat)
+        train_mask = np.load(f"{in_dir}/train_idx.npy")
+        train_mask = torch.from_numpy(train_mask)
+        val_mask = np.load(f"{in_dir}/valid_idx.npy")
+        val_mask = torch.from_numpy(val_mask)
+        test_mask = np.load(f"{in_dir}/test_idx.npy")
+        test_mask = torch.from_numpy(test_mask)
+        label = np.load(f"{in_dir}/label.npy")
+        label = torch.from_numpy(label)
+        in_feats = feat.shape[1]
+        num_classes = torch.max(label).item() + 1
+        
+        data = Dataset(
+            graph=g,
+            feat=feat,
+            label=label,
+            train_mask=train_mask,
+            val_mask=val_mask,
+            test_mask=test_mask,
+            num_classes=num_classes,
+            in_feats=in_feats,
+        )
+        data.to(device)
+        return data
+    elif "ogbn" in config.graph_name:
         dataset = DglNodePropPredDataset(name=config.graph_name, root=config.data_dir)
         g, label = dataset[0]
         g = dgl.add_self_loop(g)
@@ -437,26 +468,14 @@ def load_dataset(config: Config, topo_only=False):
         )
     
     elif config.graph_name == "orkut":
-        import os
-        import pandas as pd
 
         dataset_dir = os.path.join(config.data_dir, "orkut")
-        edges_data = pd.read_csv(os.path.join(dataset_dir, "orkut_edges.csv"))
-        node_labels = pd.read_csv(os.path.join(dataset_dir, "orkut_labels.csv"))
-        node_features = torch.load(os.path.join(dataset_dir, "orkut_features.pt"), weights_only=True)
+        graph = dgl.load_graphs(os.path.join(dataset_dir, "orkut_bidirected.dgl"))
+        graph = graph[0][0]
+        node_features = graph.ndata.pop("feat")
         in_feats = node_features.shape[1]
-
-        label = torch.from_numpy(
-            node_labels.astype("category").to_numpy()
-        ).view(-1)
-
+        label = graph.ndata.pop("label")
         num_classes = (label.max() + 1).item()
-        edges_src = torch.from_numpy(edges_data["Src"].to_numpy())
-        edges_dst = torch.from_numpy(edges_data["Dst"].to_numpy())
-        graph = dgl.graph(
-            (edges_src, edges_dst), num_nodes=node_features.shape[0]
-        )
-        graph = dgl.to_bidirected(graph)
         n_nodes = node_features.shape[0]
         n_train = int(n_nodes * 0.6)
         n_val = int(n_nodes * 0.2)
@@ -465,6 +484,7 @@ def load_dataset(config: Config, topo_only=False):
         val_mask = torch.arange(start=n_train, end=n_train + n_val)
         test_mask = torch.arange(start=n_train + n_val, end=n_nodes)
         
+        print("construct dataset", flush=True)
         return Dataset(
             graph=graph,
             feat=node_features,

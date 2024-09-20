@@ -4,6 +4,8 @@ import dataclasses
 import json
 import os
 import quiver
+import gc
+
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch import distributed as dist
 from util import *
@@ -33,20 +35,14 @@ class DDPMeta:
         os.environ["LOCAL_WORLD_SIZE"] = str(self.local_world_size)
         os.environ["WORLD_SIZE"] = str(self.world_size)
     
-def ddp_setup(local_rank: int, config: Config, backend="nccl") -> DDPMeta:
+def ddp_setup(config: Config, backend="nccl") -> DDPMeta:
     # assume torchrun creates one process at each host
     # each process than fork n processes where n equals number of gpus on a single host
 
     ddp_meta = DDPMeta()
-    assert(ddp_meta.world_size == config.num_host) 
-
-    ddp_meta.local_rank = local_rank
-    ddp_meta.local_world_size = config.num_gpu_per_host
-    ddp_meta.rank = ddp_meta.local_rank + ddp_meta.group_rank * ddp_meta.local_world_size
-    ddp_meta.world_size = ddp_meta.local_world_size * ddp_meta.world_size
-    ddp_meta.update()    
+    assert(ddp_meta.world_size == config.num_host * config.num_gpu_per_host)  
+    torch.cuda.set_device(ddp_meta.local_rank)
     dist.init_process_group(backend=backend, rank=ddp_meta.rank, world_size=ddp_meta.world_size)
-    torch.cuda.set_device(local_rank)
     return ddp_meta
 
 def ddp_exit():
@@ -85,39 +81,24 @@ def get_model_ddp(config: Config, ddp_meta: DDPMeta, data: Dataset):
     
     device = torch.cuda.current_device()
     model = model.to(device)
-    ddp_model = DDP(model, device_ids=[ddp_meta.local_rank])
+    ddp_model = DDP(model, device_ids=[ddp_meta.local_rank], output_device=ddp_meta.local_rank, find_unused_parameters=True)
     return ddp_model
 
-def train_quiver_ddp(rank: int, config: Config, qfeat: quiver.Feature, packed):
-    print(f"spawn {rank=}", flush=True)
-
-    if check_has_nvlink():
-        quiver.init_p2p(device_list=[i for i in range(config.num_gpu_per_host)])
-
-    ddp_meta = ddp_setup(rank, config)
+def train_quiver_ddp(ddp_meta: DDPMeta, config: Config, data: Dataset):
+    qfeat = get_quiver_feat(config, data)
     device = torch.cuda.current_device()
-    print(f"start train quiver {ddp_meta=} {device=}", flush=True)
 
-    data = Dataset.unpack(packed)
-    data.feat = qfeat
+    print(f"start train {ddp_meta=} {device=}", flush=True)
 
     model = get_model_ddp(config, ddp_meta, data)
     sampler = dgl.dataloading.NeighborSampler(config.fanouts)
-
-    if config.sample_mode == "uva":
-        data.graph.pin_memory_()
-    elif config.sample_mode == "gpu":
-        data.graph = data.graph.formats("csc")
-        data.graph = data.graph.to(device)
-    
-    data.to(device)
     dataloader = dgl.dataloading.DataLoader(
         data.graph,
         data.train_mask,
         sampler,
         device=device,
         batch_size=config.batch_size,
-        use_uva=config.sample_mode == "uva",
+        use_uva=False,
         use_ddp=ddp_meta.world_size > 1,
         shuffle=True,
         drop_last=True,
@@ -198,20 +179,9 @@ def train_quiver_ddp(rank: int, config: Config, qfeat: quiver.Feature, packed):
 def get_quiver_feat(config: Config, data: Dataset):
     assert(torch.cuda.is_available())
     assert(config.num_gpu_per_host <= torch.cuda.device_count())
-
-    indptr, indices, _ = data.graph.adj_tensors("csc")
-    csr_topo = quiver.CSRTopo(indptr=indptr, indices=indices)
-    
-    gpu_model = get_cuda_gpu_model()
-    has_nvlink = check_has_nvlink()
-    cache_policy = "p2p_clique_replicate" if has_nvlink else "device_replicate"
-    # device_cache_size = str(int(tensor_to_bytes(data.feat) / (1024 * 1024))) + "MB"
+    cache_policy = "device_replicate"
     device_cache_size = tensor_to_bytes(data.feat)
     device_list=[i for i in range(config.num_gpu_per_host)]
-    if has_nvlink:
-        quiver.init_p2p(device_list=device_list)
-        device_cache_size = device_cache_size // config.num_gpu_per_host
-        print("enabled p2p", flush=True)
     # reserve 8GB for sampled subgraph etc
     subgraph_size = 8 * 1024 * 1024 * 1024
 
@@ -222,10 +192,11 @@ def get_quiver_feat(config: Config, data: Dataset):
     device_cache_size = min(device_cache_size, max_cache_memory)
     device_cache_size = max(0, device_cache_size)
 
-    qfeat: quiver.Feature = quiver.Feature(rank=torch.cuda.current_device(), device_list=device_list, device_cache_size=device_cache_size, cache_policy=cache_policy, csr_topo=csr_topo)
+    qfeat: quiver.Feature = quiver.Feature(rank=torch.cuda.current_device(), device_list=device_list, device_cache_size=device_cache_size, cache_policy=cache_policy)
     qfeat.from_cpu_tensor(data.feat)
-
-
+    del data.feat
+    data.feat = qfeat
+    gc.collect()
     return qfeat
 
 def log_quiver_train(config: Config, data: Dataset, log: Logger, test_acc: float):
@@ -244,18 +215,19 @@ def log_quiver_train(config: Config, data: Dataset, log: Logger, test_acc: float
 def main():
     config = get_args()
     print(f"{config=}", flush=True)
-    data = load_dataset(config)
-    print("creating graph formats", flush=True)
-    data.graph.create_formats_()
-    print("getting quiver feat", flush=True)
-    qfeat = get_quiver_feat(config, data)
-    packed = data.pack()
-    print("start spawning", flush=True)
-    
-    try:
-        spawn(train_quiver_ddp, args=(config, qfeat, packed), nprocs=config.num_gpu_per_host, join=True)
-    except Exception as e:
-        print(f"error encountered with {config=}:", e)
+    ddp_meta = ddp_setup(config)
+    print(f"{ddp_meta=}", flush=True)
+
+    rank = ddp_meta.rank
+    device = torch.cuda.current_device()
+    print(f"{rank=} loading data", flush=True)
+    start = time.time()
+    data = load_dataset(config, device)
+    end = time.time()
+    print(f"{rank=} loaded data in {round(end - start, 1)} secs", flush=True)
+    gc.collect()
+    train_quiver_ddp(ddp_meta, config, data)
+
         
 if __name__ == "__main__":
     main()

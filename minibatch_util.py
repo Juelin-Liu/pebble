@@ -47,7 +47,7 @@ def inference_full(config: Config, data: Dataset, model: DDP, mode):
             y = torch.zeros(data.graph.num_nodes(), num_col, dtype=torch.float32, device=device)
 
             for input_nodes, output_nodes, blocks in dataloader:
-                x = feat[input_nodes]
+                x = feat[input_nodes.type(torch.long)]
                 h = layer(blocks[0], x)  # len(blocks) = 1
                 if layer_idx != len(_model.layers) - 1:
                     h = _model.dropout(h)
@@ -96,7 +96,7 @@ def inference_minibatch(config: Config, data: Dataset, model: DDP, mode):
     ys = []
     y_hats = []
     for input_nodes, output_nodes, blocks in dataloader:
-        x = feat[input_nodes]
+        x = feat[input_nodes.type(torch.long)]
         batch_pred = model(blocks, x)
         batch_label = label[output_nodes]
         ys.append(batch_label)
