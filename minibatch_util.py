@@ -55,7 +55,6 @@ def inference_full(config: Config, data: Dataset, model: DDP, mode):
                 if config.model == "gat":
                     h = h.flatten(1)
 
-                # print(f"{input_nodes.shape=} {output_nodes.shape=} {y.shape=} {h.shape=} {config.model=}")
                 y[output_nodes] = h
             feat = y
             dist.all_reduce(feat)
@@ -95,14 +94,19 @@ def inference_minibatch(config: Config, data: Dataset, model: DDP, mode):
     model.eval()
     ys = []
     y_hats = []
+    step = 0
+    acc = 0
     for input_nodes, output_nodes, blocks in dataloader:
         x = feat[input_nodes.type(torch.long)]
         batch_pred = model(blocks, x)
         batch_label = label[output_nodes]
-        ys.append(batch_label)
-        y_hats.append(batch_pred)
-
-    acc = MF.accuracy(torch.cat(y_hats), torch.cat(ys), task="multiclass", num_classes=data.num_classes)
+        # ys.append(batch_label)
+        # y_hats.append(batch_pred)
+        acc += MF.accuracy(batch_pred, batch_label, task="multiclass", num_classes=data.num_classes)
+        step += 1
+        
+    acc /= step
+    # acc = MF.accuracy(torch.cat(y_hats), torch.cat(ys), task="multiclass", num_classes=data.num_classes)
     dist.all_reduce(acc, op=dist.ReduceOp.AVG)
     return acc.item()
 
@@ -113,14 +117,15 @@ def can_use_full(config: Config, data: Dataset):
     return gpu_memory > feat_size * 2
 
 def evaluate(config: Config, data: Dataset, model: DDP):
-    # return inference_minibatch(config, data, model, "eval")
-    if can_use_full(config, data):
-        return inference_full(config, data, model, "eval")
-    else:
-        return inference_minibatch(config, data, model, "eval")
+    return inference_minibatch(config, data, model, "eval")
+    # if can_use_full(config, data):
+    #     return inference_full(config, data, model, "eval")
+    # else:
+    #     return inference_minibatch(config, data, model, "eval")
 
 def test(config: Config, data: Dataset, model: DDP):
-    if can_use_full(config, data):
-        return inference_full(config, data, model, "test")
-    else:
-        return inference_minibatch(config, data, model, "test")
+    return inference_minibatch(config, data, model, "test")
+    # if can_use_full(config, data):
+    #     return inference_full(config, data, model, "test")
+    # else:
+    #     return inference_minibatch(config, data, model, "test")

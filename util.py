@@ -12,9 +12,10 @@ from numa import numa_info
 from typing import List
 
 @dataclasses.dataclass
-class LogStep:
+class LogEpoch:
     epoch: int
     eval_acc: float
+    test_acc: float
     sample_time: float
     load_time: float
     forward_time: float
@@ -26,23 +27,23 @@ class LogStep:
 
     def print(self):
         print(
-            "Epoch {:05d} | Loss {:.4f} | Accuracy {:.4f} | Epoch Time {:.4f} | Evaluate Time {:.4f}".format(
-                self.epoch, self.loss, self.eval_acc, self.cur_epoch_time, self.evaluate_time
+            "Epoch {:05d} | Loss {:.4f} | Evaluation Accuracy {:.4f} | Test Accuracy {:.4f} | Epoch Time {:.4f}".format(
+                self.epoch, self.loss, self.eval_acc, self.test_acc, self.cur_epoch_time
             ),
             flush=True,
         )
 
     def dict(self):
         return self.__dict__
-
+    
 @dataclasses.dataclass
 class Logger:
-    steps: List[LogStep] = None
+    steps: List[LogEpoch] = None
 
     def __init__(self):
         self.steps = []
 
-    def append(self, step: LogStep):
+    def append(self, step: LogEpoch):
         self.steps.append(step)
 
     def list(self):
@@ -51,6 +52,37 @@ class Logger:
             ret.append(step.dict())
 
         return ret
+
+    def get_summary(self):
+        best_eval_acc = 0.0
+        best_eval_idx = 0
+        time_to_best_eval = 0
+        
+        best_test_acc = 0.0
+        best_test_idx = 0
+        time_to_best_test = 0
+        
+        for idx, step in enumerate(self.steps):
+            if step.eval_acc > best_eval_acc:
+                best_eval_acc = step.eval_acc
+                best_eval_idx = idx
+                time_to_best_eval = step.acc_epoch_time
+                
+            if step.test_acc > best_test_acc:
+                best_test_acc = step.test_acc
+                best_test_idx = idx
+                time_to_best_test = step.acc_epoch_time
+                
+        meta = {}
+        meta["best_eval_acc"] = best_eval_acc
+        meta["best_eval_epoch"] = best_eval_idx + 1
+        meta["time_to_best_eval"] = time_to_best_eval
+        
+        meta["best_test_acc"] = best_test_acc
+        meta["best_test_epoch"] = best_test_idx + 1
+        meta["time_to_best_test"] = time_to_best_test
+        return meta
+    
 
 class Timer:
     def __init__(self):
@@ -112,7 +144,7 @@ class Config:
         self.fanouts = args.fanouts
         self.num_epoch = args.num_epoch
         self.hid_size = args.hid_size
-        self.num_layers = args.num_layers
+        self.num_layers = len(self.fanouts)
         self.num_head = args.num_head
         self.lr = args.lr
         self.weight_decay = args.weight_decay
@@ -265,9 +297,9 @@ def get_minibatch_meta(config: Config, data: Dataset):
 
 def get_quiver_meta(config: Config, data: Dataset):
     ret = dict()
-    ret["graph_name"] = config.graph_name
     ret["system_name"] = "quiver"
     ret["train_mode"] = "minibatch"
+    ret["graph_name"] = config.graph_name
     ret["sample_mode"] = config.sample_mode
     ret["num_node"] = data.graph.num_nodes()
     ret["num_edge"] = data.graph.num_edges()
@@ -280,6 +312,24 @@ def get_quiver_meta(config: Config, data: Dataset):
     ret["num_gpu_per_host"] = config.num_gpu_per_host
     ret["num_host"] = config.num_host
     
+    return ret
+
+def get_dgl_meta(config: Config, data: Dataset):
+    ret = dict()
+    ret["system_name"] = "dgl"
+    ret["train_mode"] = "minibatch"
+    ret["graph_name"] = config.graph_name
+    ret["sample_mode"] = config.sample_mode
+    ret["num_node"] = data.graph.num_nodes()
+    ret["num_edge"] = data.graph.num_edges()
+    ret["cpu_model"] = get_cpu_model()
+    ret["gpu_model"] = get_cuda_gpu_model()
+    ret["feat_width"] = data.in_feats
+    ret["batch_size"] = config.batch_size
+    ret["fanouts"] = config.fanouts
+    ret["num_epoch"] = config.num_epoch
+    ret["num_gpu_per_host"] = config.num_gpu_per_host
+    ret["num_host"] = config.num_host
     return ret
 
 def get_args() -> Config:
@@ -305,7 +355,7 @@ def get_args() -> Config:
     parser.add_argument(
         "--hid_size", default=256, type=int, help="Model hidden dimension"
     )
-    parser.add_argument("--num_layers", default=3, type=int, help="Model layers")
+
     parser.add_argument(
         "--num_head", default=4, type=int, help="GAT only: number of attention head"
     )
@@ -370,15 +420,15 @@ def get_args() -> Config:
     Config.set_global_config(config)
     return config
 
-def load_dataset(config: Config, device="cpu", topo_only=False):
+def load_dataset(config: Config, topo_only=False):
     if config.graph_name == "ogbn-papers100M" or config.graph_name == "orkut":
         import numpy as np
         in_dir = os.path.join(config.data_dir, config.graph_name)
-        indptr = np.load(f"{in_dir}/indptr.npy", mmap_mode='r')
-        indices = np.load(f"{in_dir}/indices.npy", mmap_mode='r')
+        indptr = np.load(f"{in_dir}/indptr.npy")
+        indices = np.load(f"{in_dir}/indices.npy")
         weights = np.empty([])
-        g = dgl.graph(data=("csc", (indptr, indices, weights)), device=device)
-        feat = np.load(f"{in_dir}/feat.npy", mmap_mode='r')
+        g = dgl.graph(data=("csc", (indptr, indices, weights)))
+        feat = np.load(f"{in_dir}/feat.npy")
         feat = torch.from_numpy(feat)
         train_mask = np.load(f"{in_dir}/train_idx.npy")
         train_mask = torch.from_numpy(train_mask)
@@ -401,8 +451,8 @@ def load_dataset(config: Config, device="cpu", topo_only=False):
             num_classes=num_classes,
             in_feats=in_feats,
         )
-        data.to(device)
         return data
+    
     elif "ogbn" in config.graph_name:
         dataset = DglNodePropPredDataset(name=config.graph_name, root=config.data_dir)
         g, label = dataset[0]
