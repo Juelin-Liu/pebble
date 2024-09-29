@@ -11,7 +11,7 @@ num_proc_per_node=1
 num_gpu_per_node=4
 
 JOBID=${system_name}
-END_POINT="10.0.0.4:29400"
+END_POINT="10.0.0.5:29400"
 
 # orkut
 torchrun \
