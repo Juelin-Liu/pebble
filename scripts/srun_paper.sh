@@ -38,7 +38,7 @@ json_dir=${project_dir}/json/$system
 text_dir=${project_dir}/text/$system
 data_dir=${project_dir}/dataset
 py_script=${project_dir}/train_${system}.py
-bin=${project_dir}/launcher.sh
+bin=${project_dir}/scripts/launcher.sh
 mkdir -p $json_dir
 mkdir -p $text_dir
 
