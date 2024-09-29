@@ -5,10 +5,9 @@ work_dir=$(realpath "$work_dir/..")
 
 num_gpu_per_host=4
 gpu_model=a100
-# system=torch_replicate
 
-for system in "torch_replicate" "dgl_dist"; do
-    for num_host in 1 2 3; do
+for system in "quiver_replicate" "dgl_dist"; do
+    for num_host in 2 3; do
         sbatch \
             --partition=gpu-preempt \
             --nodes=$num_host \
