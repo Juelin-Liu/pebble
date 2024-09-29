@@ -11,6 +11,29 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from numa import numa_info
 from typing import List
 
+find_unused_parameters=True
+
+@dataclasses.dataclass
+class DDPMeta:
+    local_rank : int
+    group_rank : int
+    rank: int
+    local_world_size : int
+    world_size: int
+    def __init__(self):
+        self.local_rank = int(os.environ["LOCAL_RANK"])
+        self.group_rank = int(os.environ["GROUP_RANK"])
+        self.rank = int(os.environ["RANK"])
+        self.local_world_size = int(os.environ["LOCAL_WORLD_SIZE"])
+        self.world_size = int(os.environ["WORLD_SIZE"])
+    
+    def update(self):
+        os.environ["LOCAL_RANK"] = str(self.local_rank)
+        os.environ["GROUP_RANK"] = str(self.group_rank)
+        os.environ["RANK"] = str(self.rank)
+        os.environ["LOCAL_WORLD_SIZE"] = str(self.local_world_size)
+        os.environ["WORLD_SIZE"] = str(self.world_size)
+    
 @dataclasses.dataclass
 class LogEpoch:
     epoch: int
@@ -295,9 +318,9 @@ def get_minibatch_meta(config: Config, data: Dataset):
     ret["num_partition"] = config.num_gpu_per_host
     return ret
 
-def get_quiver_meta(config: Config, data: Dataset):
+def get_quiver_meta(config: Config, data: Dataset, use_p2p = False):
     ret = dict()
-    ret["system_name"] = "quiver"
+    ret["system_name"] = "quiver-p2p" if use_p2p else "quiver-loc"
     ret["train_mode"] = "minibatch"
     ret["graph_name"] = config.graph_name
     ret["sample_mode"] = config.sample_mode

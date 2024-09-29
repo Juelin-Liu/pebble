@@ -12,27 +12,6 @@ from typing import List, Union
 from minibatch_model import GAT, SAGE, GCN
 from minibatch_util import evaluate, test
 from torch.multiprocessing import spawn
-
-@dataclasses.dataclass
-class DDPMeta:
-    local_rank : int
-    group_rank : int
-    rank: int
-    local_world_size : int
-    world_size: int
-    def __init__(self):
-        self.local_rank = int(os.environ["LOCAL_RANK"])
-        self.group_rank = int(os.environ["GROUP_RANK"])
-        self.rank = int(os.environ["RANK"])
-        self.local_world_size = int(os.environ["LOCAL_WORLD_SIZE"])
-        self.world_size = int(os.environ["WORLD_SIZE"])
-    
-    def update(self):
-        os.environ["LOCAL_RANK"] = str(self.local_rank)
-        os.environ["GROUP_RANK"] = str(self.group_rank)
-        os.environ["RANK"] = str(self.rank)
-        os.environ["LOCAL_WORLD_SIZE"] = str(self.local_world_size)
-        os.environ["WORLD_SIZE"] = str(self.world_size)
     
 def ddp_setup(config: Config, backend="nccl") -> DDPMeta:
     # assume torchrun creates one process at each host
@@ -81,7 +60,7 @@ def get_model_ddp(config: Config, ddp_meta: DDPMeta, data: Dataset):
     device = torch.cuda.current_device()
     model = model.to(device)
     if ddp_meta.world_size > 1:
-        model = DDP(model, device_ids=[ddp_meta.local_rank], output_device=ddp_meta.local_rank, find_unused_parameters=True)
+        model = DDP(model, device_ids=[ddp_meta.local_rank], output_device=ddp_meta.local_rank, find_unused_parameters=find_unused_parameters)
     return model
 
 def train_dgl_ddp(ddp_meta: DDPMeta, config: Config, data: Dataset):
@@ -89,8 +68,7 @@ def train_dgl_ddp(ddp_meta: DDPMeta, config: Config, data: Dataset):
     data.to(device)
     data.feat = data.feat.to(device)
     data.graph = data.graph.to(device)
-    data.feat = data.feat.to(device)
-    
+    gc.collect()    
     print(f"start train {ddp_meta=} {device=}", flush=True)
 
     model = get_model_ddp(config, ddp_meta, data)
@@ -103,7 +81,7 @@ def train_dgl_ddp(ddp_meta: DDPMeta, config: Config, data: Dataset):
         batch_size=config.batch_size,
         use_uva=config.sample_mode == "uva",
         use_ddp=ddp_meta.world_size > 1,
-        shuffle=False,
+        shuffle=True,
         drop_last=True,
         num_workers=0,
     )
