@@ -93,9 +93,7 @@ def get_quiver_p2p(config: Config, data: Dataset):
     data.feat = qfeat
 
 def train_quiver_p2p(local_rank: int, config: Config, packed):
-    
     ddp_meta = ddp_setup(local_rank, config)
-    
     device = torch.cuda.current_device()
     data = Dataset.unpack(packed)
     data.to(device)
@@ -191,6 +189,8 @@ def train_quiver_p2p(local_rank: int, config: Config, packed):
     if ddp_meta.rank == 0:
         log_dgl_train(config, data, logger)
 
+    ddp_exit()
+
 def log_dgl_train(config: Config, data: Dataset, log: Logger):
     assert config.log_file.endswith(".json")
     with open(config.log_file, "w") as outfile:
@@ -223,8 +223,6 @@ def main():
         spawn(train_quiver_p2p, args=(config, packed), nprocs=config.num_gpu_per_host, join=True)
     except Exception as e:
         print(f"error encountered with {config=}:", e)
-
-    ddp_exit()
 
 if __name__ == "__main__":
     main()
