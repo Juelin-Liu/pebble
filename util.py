@@ -11,7 +11,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from numa import numa_info
 from typing import List
 
-find_unused_parameters=True
+find_unused_parameters=False
 
 @dataclasses.dataclass
 class DDPMeta:
