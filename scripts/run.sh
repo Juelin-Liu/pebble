@@ -11,7 +11,10 @@ num_proc_per_node=1
 num_gpu_per_node=4
 
 JOBID=${system_name}
-END_POINT="10.0.0.5:29400"
+HOST_IP="$(hostname -I | xargs)" # remove trailing whitespaces
+HOST_IP=$("$HOST_IP" | awk '{print $1}')
+PORT=29400
+END_POINT="$HOST_IP:$PORT"
 
 # orkut
 torchrun \

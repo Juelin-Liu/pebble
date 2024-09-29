@@ -13,4 +13,4 @@ pip install dgl -f https://data.dgl.ai/wheels/torch-2.4/cu124/repo.html
 
 git clone -b cuda-12.4 https://github.com/Juelin-Liu/torch-quiver.git 
 
-cd torch-quiver && QUIVER_ENABLE_CUDA=1 python setup.py install
+cd torch-quiver && bash compile.sh
