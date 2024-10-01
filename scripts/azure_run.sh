@@ -9,9 +9,9 @@ work_dir="$(dirname "$(readlink -f "$0")")"
 work_dir=$(realpath "$work_dir/..")
 
 py_script=$work_dir/train_quiver_replicate.py
-num_epoch=50
+num_epoch=10
 system_name=quiver-replicate
-num_host=2
+num_host=1
 num_proc_per_node=4
 num_gpu_per_node=4
 log_dir=${work_dir}/results
@@ -23,23 +23,24 @@ PORT=29400
 END_POINT="$HOST_IP:$PORT"
 mkdir -p $log_dir
 # # orkut
-# torchrun \
-#     --nnodes ${num_host} \
-#     --nproc-per-node ${num_proc_per_node} \
-#     --rdzv-backend=c10d \
-#     --rdzv-id="${JOBID}" \
-#     --rdzv-endpoint="$END_POINT" \
-#     $py_script \
-#     --num_host ${num_host} \
-#     --num_gpu_per_host ${num_gpu_per_node} \
-#     --data_dir /mnt \
-#     --graph_name orkut \
-#     --fanouts 10,10,10 \
-#     --model sage \
-#     --hid_size 512 \
-#     --log_file $log_dir/${system_name}-orkut-h512-n${num_host}.json \
-#     --num_epoch $num_epoch
+torchrun \
+    --nnodes ${num_host} \
+    --nproc-per-node ${num_proc_per_node} \
+    --rdzv-backend=c10d \
+    --rdzv-id="${JOBID}" \
+    --rdzv-endpoint="$END_POINT" \
+    $py_script \
+    --num_host ${num_host} \
+    --num_gpu_per_host ${num_gpu_per_node} \
+    --data_dir /mnt \
+    --graph_name orkut \
+    --fanouts 10,10,10 \
+    --model sage \
+    --hid_size 512 \
+    --log_file $log_dir/${system_name}-orkut-h512-n${num_host}.json \
+    --num_epoch $num_epoch
 
+num_epoch=50
 # ogbn-papers100M
 torchrun \
     --nnodes ${num_host} \

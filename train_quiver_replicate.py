@@ -161,7 +161,6 @@ def train_quiver_replicate(ddp_meta: DDPMeta, config: Config, data: Dataset):
         epoch_loss /= step
         dist.all_reduce(epoch_loss, op=dist.ReduceOp.SUM)
         epoch_loss = epoch_loss / (config.num_gpu_per_host * config.num_host)
-        # logging
         log_epoch = LogEpoch(
             epoch=epoch,
             eval_acc=eval_acc,
@@ -173,7 +172,7 @@ def train_quiver_replicate(ddp_meta: DDPMeta, config: Config, data: Dataset):
             cur_epoch_time=cur_epoch_time,
             acc_epoch_time=acc_epoch_time,
             evaluate_time=evaluate_time,
-            loss=loss.item(),
+            loss=epoch_loss.item(),
         )
 
         if ddp_meta.local_rank == 0:

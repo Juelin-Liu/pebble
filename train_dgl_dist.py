@@ -135,8 +135,8 @@ def train_dgl_ddp(ddp_meta: DDPMeta, config: Config, data: Dataset):
 
         # logging
         epoch_loss /= step
-        dist.all_reduce(epoch_loss, op=dist.ReduceOp.AVG)
-        # logging
+        dist.all_reduce(epoch_loss, op=dist.ReduceOp.SUM)
+        epoch_loss = epoch_loss / (config.num_gpu_per_host * config.num_host)
         log_epoch = LogEpoch(
             epoch=epoch,
             eval_acc=eval_acc,
@@ -148,10 +148,10 @@ def train_dgl_ddp(ddp_meta: DDPMeta, config: Config, data: Dataset):
             cur_epoch_time=cur_epoch_time,
             acc_epoch_time=acc_epoch_time,
             evaluate_time=evaluate_time,
-            loss=loss.item(),
+            loss=epoch_loss.item(),
         )
 
-        if ddp_meta.rank == 0:
+        if ddp_meta.local_rank == 0:
             log_epoch.print()
             logger.append(log_epoch)
     
