@@ -176,7 +176,7 @@ def train_quiver_replicate(ddp_meta: DDPMeta, config: Config, data: Dataset):
             loss=loss.item(),
         )
 
-        if ddp_meta.rank == 0:
+        if ddp_meta.local_rank == 0:
             log_epoch.print()
             logger.append(log_epoch)
     
