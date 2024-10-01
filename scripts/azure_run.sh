@@ -8,9 +8,9 @@ export NCCL_IB_DISABLE=1
 work_dir="$(dirname "$(readlink -f "$0")")"
 work_dir=$(realpath "$work_dir/..")
 
-py_script=$work_dir/train_quiver_replicate.py
+py_script=$work_dir/train_dgl_dist.py
 num_epoch=10
-system_name=quiver-replicate
+system_name=dgl
 num_host=3
 num_proc_per_node=4
 num_gpu_per_node=4
