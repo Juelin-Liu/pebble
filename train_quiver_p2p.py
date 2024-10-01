@@ -14,7 +14,7 @@ from minibatch_model import GAT, SAGE, GCN
 from minibatch_util import evaluate, test
 from torch.multiprocessing import spawn
 
-def ddp_setup(local_rank: int, config: Config, backend="nccl") -> DDPMeta:
+def ddp_setup(local_rank: int, config: Config, backend=backend) -> DDPMeta:
     # assume torchrun creates one process at each host
     # each process than fork n processes where n equals number of gpus on a single host
 
