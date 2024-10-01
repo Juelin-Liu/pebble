@@ -14,7 +14,7 @@ from minibatch_model import GAT, SAGE, GCN
 from minibatch_util import evaluate, test
 from torch.multiprocessing import spawn
 
-def ddp_setup(config: Config, backend="nccl") -> DDPMeta:
+def ddp_setup(config: Config, backend=backend) -> DDPMeta:
     # assume torchrun creates one process at each host
     # each process than fork n processes where n equals number of gpus on a single host
 
@@ -159,7 +159,8 @@ def train_quiver_replicate(ddp_meta: DDPMeta, config: Config, data: Dataset):
 
         # logging
         epoch_loss /= step
-        dist.all_reduce(epoch_loss, op=dist.ReduceOp.AVG)
+        dist.all_reduce(epoch_loss, op=dist.ReduceOp.SUM)
+        epoch_loss = epoch_loss / (config.num_gpu_per_host * config.num_host)
         # logging
         log_epoch = LogEpoch(
             epoch=epoch,

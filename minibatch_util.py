@@ -107,7 +107,9 @@ def inference_minibatch(config: Config, data: Dataset, model: DDP, mode):
         
     acc /= step
     # acc = MF.accuracy(torch.cat(y_hats), torch.cat(ys), task="multiclass", num_classes=data.num_classes)
-    dist.all_reduce(acc, op=dist.ReduceOp.AVG)
+    # dist.all_reduce(acc, op=dist.ReduceOp.AVG)
+    dist.all_reduce(acc, op=dist.ReduceOp.SUM)
+    acc = acc / (config.num_gpu_per_host * config.num_host)
     return acc.item()
 
 def can_use_full(config: Config, data: Dataset):

@@ -12,6 +12,7 @@ from numa import numa_info
 from typing import List
 
 find_unused_parameters=False
+backend="gloo"
 
 @dataclasses.dataclass
 class DDPMeta:
